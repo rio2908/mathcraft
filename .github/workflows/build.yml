@@ -30,6 +30,35 @@ jobs:
           python -m pip install --upgrade pip pygbag
           python -m pygbag --build --ume_block 0 .
 
+      - name: Patch Pygbag 0.9.3 bugs (BrowserFS 404 and Grey Screen)
+        run: |
+          python - << 'EOF'
+          import os, re
+
+          html_path = 'build/web/index.html'
+          if os.path.exists(html_path):
+              with open(html_path, 'r', encoding='utf-8') as f:
+                  html = f.read()
+
+              # 1. Исправляем 404: заменяем битую ссылку на надежный CDN jsDelivr
+              html = re.sub(
+                  r'<script\s+src=["\'][^"\']*browserfs\.min\.js["\']\s*></script>',
+                  '<script src="https://cdn.jsdelivr.net/npm/browserfs@1.4.3/dist/browserfs.min.js"></script>',
+                  html
+              )
+              html = html.replace('https://pygame-web.github.io/cdn/0.9.3//browserfs.min.js', 'https://cdn.jsdelivr.net/npm/browserfs@1.4.3/dist/browserfs.min.js')
+              html = html.replace('//cdn/0.9.3//browserfs.min.js', 'https://cdn.jsdelivr.net/npm/browserfs@1.4.3/dist/browserfs.min.js')
+
+              # 2. Исправляем серый экран на смартфонах и мониторах с масштабированием
+              dpi_fix = '<script>Object.defineProperty(window, "devicePixelRatio", { get: () => 1 });</script>'
+              if '<head>' in html:
+                  html = html.replace('<head>', '<head>\n    ' + dpi_fix)
+
+              with open(html_path, 'w', encoding='utf-8') as f:
+                  f.write(html)
+              print("Файл index.html успешно пропатчен!")
+          EOF
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
