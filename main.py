@@ -6,33 +6,32 @@ import json
 import os
 from datetime import date, datetime
 
+# 1. Инициализация Pygame
 pygame.init()
+pygame.font.init()
 
-# Виртуальное разрешение игры (1000x600)
+# Виртуальный холст игры
 V_WIDTH, V_HEIGHT = 1000, 600
 canvas = pygame.Surface((V_WIDTH, V_HEIGHT))
 
-# Полноэкранный режим устройства
-screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.SCALED)
-REAL_WIDTH, REAL_HEIGHT = screen.get_size()
-pygame.display.set_caption("Майнкрафт: Марафон 50")
+# 2. Безопасное определение экрана для Android
+disp_info = pygame.display.Info()
+REAL_WIDTH = disp_info.current_w if disp_info.current_w > 0 else V_WIDTH
+REAL_HEIGHT = disp_info.current_h if disp_info.current_h > 0 else V_HEIGHT
+
+screen = pygame.display.set_mode((REAL_WIDTH, REAL_HEIGHT))
+pygame.display.set_caption("MathCraft")
 clock = pygame.time.Clock()
 
-# Безопасный подбор шрифтов для Android
-def get_safe_font(size, bold=False):
-    f_path = pygame.font.match_font("dejavusans") or pygame.font.match_font("arial")
-    if f_path:
-        try:
-            return pygame.font.Font(f_path, size)
-        except Exception:
-            pass
-    return pygame.font.Font(None, size + 4)
+# 3. Безопасные встроенные шрифты (без вызова системного match_font)
+def get_safe_font(size):
+    return pygame.font.Font(None, size)
 
-FONT_TITLE = get_safe_font(26, bold=True)
-FONT_BIG = get_safe_font(21, bold=True)
-FONT_MED = get_safe_font(17, bold=True)
-FONT_SMALL = get_safe_font(14, bold=True)
-FONT_TINY = get_safe_font(12, bold=True)
+FONT_TITLE = get_safe_font(28)
+FONT_BIG = get_safe_font(23)
+FONT_MED = get_safe_font(19)
+FONT_SMALL = get_safe_font(16)
+FONT_TINY = get_safe_font(13)
 
 # Палитра Minecraft
 MC_GUI_BG = (198, 198, 198)
@@ -79,7 +78,7 @@ POTIONS = {
     "luck": {"name": "Зелье Удачи", "desc": "Даёт удвоенные изумруды на следующие 10 примеров!", "cost": 20, "max": 1}
 }
 
-# Безопасные пути для Android
+# Внутренняя память приложения
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 SAVE_FILE = os.path.join(BASE_PATH, "mc_math_save.json")
 LAST_PLAYER_FILE = os.path.join(BASE_PATH, "mc_last_player.txt")
@@ -656,7 +655,6 @@ running = True
 while running:
     anim_tick += 1
     
-    # Расчёт масштабирования для любого экрана (сохранение пропорций 1000x600)
     scale = min(REAL_WIDTH / V_WIDTH, REAL_HEIGHT / V_HEIGHT)
     offset_x = (REAL_WIDTH - int(V_WIDTH * scale)) // 2
     offset_y = (REAL_HEIGHT - int(V_HEIGHT * scale)) // 2
@@ -830,7 +828,6 @@ while running:
                                     spawn_dust(280, 190, color=(220, 50, 50))
                                     boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
 
-        # БИТВА СО СТРАЖЕМ: ВЫБОР ТОЛЬКО ИЗ mob_choices
         elif game_state == "MOB_BATTLE":
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if mob_hp == 0 or mob_failed_reset:
@@ -1037,7 +1034,7 @@ while running:
         if ft[4] <= 0:
             floating_texts.remove(ft)
 
-    # ==================== ОТРИСОВКА НА ВИРТУАЛЬНЫЙ ХОЛСТ (canvas) ====================
+    # ==================== ОТРИСОВКА НА ВИРТУАЛЬНЫЙ ХОЛСТ ====================
 
     if game_state == "LOGIN":
         canvas.fill((115, 170, 225))
@@ -1220,7 +1217,6 @@ while running:
             q_txt = FONT_TITLE.render(mob_task_str, True, WHITE)
             canvas.blit(q_txt, (q_mob_box.centerx - q_txt.get_width() // 2, q_mob_box.centery - q_txt.get_height() // 2))
 
-            # СТРОГО mob_choices[i]
             for i, rect in enumerate(mob_answer_buttons):
                 draw_mc_button(canvas, rect, str(mob_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
 
@@ -1461,8 +1457,8 @@ while running:
                     can_buy = player_data["emeralds"] >= pot_info["cost"]
                     draw_mc_button(canvas, b_pot, "Купить", b_pot.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL, custom_bg=(130, 60, 170))
 
-    # --- МАСШТАБИРОВАНИЕ ХОЛСТА НА ЭКРАН ТЕЛЕФОНА ---
-    screen.fill((0, 0, 0)) # Чёрные поля по краям (letterbox)
+    # Масштабирование на реальный экран мобильного
+    screen.fill((0, 0, 0))
     scaled_surf = pygame.transform.smoothscale(canvas, (int(V_WIDTH * scale), int(V_HEIGHT * scale)))
     screen.blit(scaled_surf, (offset_x, offset_y))
 
