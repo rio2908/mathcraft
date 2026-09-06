@@ -5,10 +5,9 @@ import math
 import json
 import os
 import asyncio
-import traceback
 from datetime import date, datetime
 
-# 1. Инициализация
+# Инициализация
 pygame.init()
 pygame.font.init()
 
@@ -500,178 +499,7 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         pygame.draw.rect(surf, h_col, (sx + 7, sy - 16, 6, 18))
         pygame.draw.rect(surf, (30, 30, 30), (sx - 13, sy - 16, 26, 18), 1)
 
-# ==================== ПЕРЕМЕННЫЕ И СОСТОЯНИЕ ====================
-TOTAL_QUESTS = 50
-STEPS_PER_WORLD = 10
-base_y = 490
-platforms = [(95 + i * ((WIDTH - 190) // STEPS_PER_WORLD), base_y) for i in range(STEPS_PER_WORLD + 1)]
-
-last_saved_name = get_last_player()
-if last_saved_name:
-    player_name = last_saved_name
-    player_data = get_player(player_name)
-    game_state = "GAME"
-else:
-    player_name = ""
-    player_data = None
-    game_state = "LOGIN"
-
-task_num = player_data.get("task_num", 1) if player_data else 1
-combo_count = 0
-current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
-step_in_world = (task_num - 1) % STEPS_PER_WORLD
-
-hero_x = float(platforms[step_in_world][0])
-hero_y = float(platforms[step_in_world][1] - 24)
-target_x, target_y = hero_x, hero_y
-is_moving = False
-move_progress = 0.0
-squash_val = 1.0
-anim_tick = 0
-sword_swing_timer = 0
-mob_flash_timer = 0
-
-ten_errors = []
-question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
-message = "Добудь правильный ответ!"
-message_color = DARK_TEXT
-
-# Переменные моба
-mob_max_hp = 3
-mob_hp = 3
-mob_task_str = ""
-mob_ans = 0
-mob_choices = []
-mob_clean_expr = ""
-mob_op = "+"
-mob_battle_result_msg = ""
-mob_failed_reset = False
-
-# Переменные финального босса
-boss_max_hp = 5
-boss_streak = 0
-boss_task_str = ""
-boss_ans = 0
-boss_choices = []
-boss_op = "+"
-boss_clean_expr = ""
-boss_msg = "Победи Дракона!"
-boss_won = False
-
-workbench_tab = "HELMETS"
-
-particles = []
-floating_texts = []
-
-def spawn_dust(x, y, color=(160, 150, 140)):
-    for _ in range(3):
-        particles.append([
-            x + random.randint(-8, 8), y + random.randint(-3, 3),
-            random.uniform(-1.5, 1.5), random.uniform(-1.8, -0.4),
-            color, random.randint(15, 25), random.randint(3, 5)
-        ])
-
-def spawn_hit_sparks(x, y, is_shield=False):
-    col_choices = [(80, 240, 255), (255, 230, 50)] if is_shield else [(255, 80, 40), (255, 230, 50)]
-    for _ in range(16 if is_shield else 12):
-        particles.append([
-            x + random.randint(-8, 8), y + random.randint(-12, 12),
-            random.uniform(-3.5, 3.5), random.uniform(-3.5, 2.5),
-            random.choice(col_choices),
-            random.randint(16, 28), random.randint(4, 7)
-        ])
-
-def spawn_speed_bubbles(x, y):
-    if random.random() < 0.35:
-        particles.append([
-            x + random.randint(-15, 15), y + random.randint(-10, 10),
-            random.uniform(-0.4, 0.4), random.uniform(-1.5, -0.6),
-            (80, 255, 120), random.randint(20, 35), random.randint(2, 4)
-        ])
-
-def get_mob_max_hp():
-    arts = player_data.get("artifacts", []) if player_data else []
-    if "strength_potion" in arts: return 1
-    if "sharp_sword" in arts: return 2
-    return 3
-
-def get_boss_max_hp():
-    arts = player_data.get("artifacts", []) if player_data else []
-    if "end_crystal" in arts: return 3
-    if "dragon_bow" in arts: return 4
-    return 5
-
-def start_mob_encounter():
-    global game_state, mob_hp, mob_max_hp, mob_task_str, mob_ans, mob_choices, mob_clean_expr, mob_op, mob_battle_result_msg, mob_failed_reset
-    game_state = "MOB_BATTLE"
-    mob_max_hp = get_mob_max_hp()
-    mob_hp = mob_max_hp
-    mob_failed_reset = False
-    mob_battle_result_msg = "Реши пример, чтобы нанести удар!"
-    mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
-
-def start_boss_battle():
-    global game_state, boss_streak, boss_max_hp, boss_task_str, boss_ans, boss_choices, boss_clean_expr, boss_op, boss_msg, boss_won
-    game_state = "BOSS_BATTLE"
-    boss_max_hp = get_boss_max_hp()
-    boss_streak = 0
-    boss_won = False
-    boss_msg = f"Реши {boss_max_hp} примеров подряд, чтобы одолеть Дракона!"
-    boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
-
-def reset_entire_marathon():
-    global task_num, step_in_world, current_world_idx, hero_x, hero_y, target_x, target_y, is_moving, ten_errors, question_str, correct_ans, choices, current_op, clean_expr, game_state, message, message_color
-    task_num = 1
-    step_in_world = 0
-    current_world_idx = 0
-    hero_x = float(platforms[0][0])
-    hero_y = float(platforms[0][1] - 24)
-    target_x, target_y = hero_x, hero_y
-    is_moving = False
-    ten_errors = []
-    
-    all_data = load_data()
-    if player_name.strip() in all_data:
-        p = all_data[player_name.strip()]
-        p["task_num"] = 1
-        save_data(all_data)
-        
-    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[0]["ops"])
-    message = "Марафон начат сначала! Вперёд!"
-    message_color = DARK_TEXT
-    game_state = "GAME"
-
-# Кнопки
-btn_w, btn_h = 140, 54
-start_btn_x = (WIDTH - (3 * btn_w + 40)) // 2
-answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 235, btn_w, btn_h) for i in range(3)]
-mob_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
-boss_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
-
-nav_workbench = pygame.Rect(WIDTH - 430, 10, 110, 34)
-nav_switch_player = pygame.Rect(WIDTH - 310, 10, 110, 34)
-nav_reset_game = pygame.Rect(WIDTH - 190, 10, 85, 34)
-nav_fullscreen = pygame.Rect(WIDTH - 95, 10, 80, 34)
-
-confirm_reset_yes = pygame.Rect(WIDTH // 2 - 130, 310, 110, 42)
-confirm_reset_no = pygame.Rect(WIDTH // 2 + 20, 310, 110, 42)
-
-btn_nick_keyboard = pygame.Rect(WIDTH//2 - 150, 245, 300, 40)
-btn_nick_steve = pygame.Rect(WIDTH//2 - 150, 295, 95, 36)
-btn_nick_alex = pygame.Rect(WIDTH//2 - 47, 295, 95, 36)
-btn_nick_hero = pygame.Rect(WIDTH//2 + 55, 295, 95, 36)
-
-mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
-boss_btn_finish = pygame.Rect(WIDTH // 2 - 150, 475, 300, 48)
-review_btn_continue = pygame.Rect(WIDTH // 2 - 160, 500, 320, 48)
-final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 385, 280, 46)
-
-tab_helmets_rect = pygame.Rect(140, 55, 170, 36)
-tab_vehicles_rect = pygame.Rect(325, 55, 175, 36)
-tab_artifacts_rect = pygame.Rect(515, 55, 175, 36)
-tab_potions_rect = pygame.Rect(705, 55, 175, 36)
-
-# ==================== ГЛАВНЫЙ ЦИКЛ ====================
+# ==================== ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ ====================
 async def main():
     global player_name, player_data, game_state, task_num, combo_count, current_world_idx, step_in_world
     global hero_x, hero_y, target_x, target_y, is_moving, move_progress, squash_val, anim_tick
@@ -1206,7 +1034,6 @@ async def main():
             draw_mc_button(screen, confirm_reset_yes, "Да, сбросить", confirm_reset_yes.collidepoint(mouse_pos), custom_bg=(210, 60, 60))
             draw_mc_button(screen, confirm_reset_no, "Отмена", confirm_reset_no.collidepoint(mouse_pos), custom_bg=(90, 160, 90))
 
-        # АРЕНА МОБА
         elif game_state == "MOB_BATTLE":
             screen.fill((45, 45, 52))
             arena_card = pygame.Rect(120, 20, 760, 560)
@@ -1249,7 +1076,6 @@ async def main():
                 q_txt = FONT_TITLE.render(mob_task_str, True, WHITE)
                 screen.blit(q_txt, (q_mob_box.centerx - q_txt.get_width() // 2, q_mob_box.centery - q_txt.get_height() // 2))
 
-                # СТРОГО mob_choices[i]
                 for i, rect in enumerate(mob_answer_buttons):
                     draw_mc_button(screen, rect, str(mob_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
 
@@ -1273,7 +1099,6 @@ async def main():
                 btn_txt = "Продолжить путь!" if mob_hp == 0 else "Попробовать биом сначала"
                 draw_mc_button(screen, mob_btn_continue, btn_txt, mob_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
-        # АРЕНА ДРАКОНА
         elif game_state == "BOSS_BATTLE":
             screen.fill((15, 10, 25))
             arena_card = pygame.Rect(120, 20, 760, 560)
@@ -1382,7 +1207,6 @@ async def main():
 
             draw_mc_button(screen, review_btn_continue, btn_txt, review_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
-        # ВЕРСТАК
         elif game_state == "WORKBENCH":
             screen.fill((45, 45, 50))
             draw_mc_button(screen, pygame.Rect(30, 12, 100, 32), "<< В мир", pygame.Rect(30, 12, 100, 32).collidepoint(mouse_pos), font_pref=FONT_SMALL)
@@ -1494,11 +1318,5 @@ async def main():
         await asyncio.sleep(0)
         clock.tick(60)
 
-# Безопасный запуск с выводом ошибок
-try:
-    asyncio.run(main())
-except Exception as e:
-    traceback.print_exc()
-    if sys.platform == "emscripten":
-        import platform
-        platform.window.console.error("КРАШ В PYTHON: " + traceback.format_exc())
+# Запуск игры
+asyncio.run(main())
