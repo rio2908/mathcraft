@@ -11,7 +11,6 @@ from datetime import date, datetime
 pygame.init()
 pygame.font.init()
 
-# Виртуальный холст игры
 V_WIDTH, V_HEIGHT = 1000, 600
 canvas = pygame.Surface((V_WIDTH, V_HEIGHT))
 screen = pygame.display.set_mode((V_WIDTH, V_HEIGHT))
@@ -27,7 +26,7 @@ FONT_MED = get_safe_font(19)
 FONT_SMALL = get_safe_font(16)
 FONT_TINY = get_safe_font(13)
 
-# Цвета
+# Палитра Minecraft
 MC_GUI_BG = (198, 198, 198)
 MC_GUI_LIGHT = (255, 255, 255)
 MC_GUI_DARK = (85, 85, 85)
@@ -74,6 +73,29 @@ POTIONS = {
 
 SAVE_FILE = "mc_math_save.json"
 LAST_PLAYER_FILE = "mc_last_player.txt"
+
+# Вызов мобильной клавиатуры через системный диалог браузера
+def prompt_mobile_keyboard(current_name=""):
+    if sys.platform == "emscripten":
+        try:
+            import platform
+            result = platform.window.prompt("Введи ник игрока:", current_name or "Стив")
+            if result:
+                return str(result).strip()[:14]
+        except Exception:
+            pass
+    return None
+
+# Переключение на полный экран (скрывает адресную строку браузера)
+def request_browser_fullscreen():
+    if sys.platform == "emscripten":
+        try:
+            import platform
+            doc = platform.window.document
+            if not doc.fullscreenElement:
+                doc.documentElement.requestFullscreen()
+        except Exception:
+            pass
 
 def load_data():
     if os.path.exists(SAVE_FILE):
@@ -480,7 +502,7 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         pygame.draw.rect(surf, h_col, (sx + 7, sy - 16, 6, 18))
         pygame.draw.rect(surf, (30, 30, 30), (sx - 13, sy - 16, 26, 18), 1)
 
-# ==================== ГЛАВНАЯ АСИНХРОННАЯ ФУНКЦИЯ ДЛЯ ВЕБА ====================
+# ==================== ГЛАВНЫЙ ЦИКЛ ====================
 async def main():
     global player_name, player_data, game_state, task_num, combo_count, current_world_idx, step_in_world
     global hero_x, hero_y, target_x, target_y, is_moving, move_progress, squash_val, anim_tick
@@ -581,12 +603,19 @@ async def main():
     mob_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
     boss_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
 
-    nav_workbench = pygame.Rect(V_WIDTH - 380, 10, 125, 34)
-    nav_switch_player = pygame.Rect(V_WIDTH - 245, 10, 125, 34)
-    nav_reset_game = pygame.Rect(V_WIDTH - 110, 10, 95, 34)
+    nav_workbench = pygame.Rect(V_WIDTH - 430, 10, 110, 34)
+    nav_switch_player = pygame.Rect(V_WIDTH - 310, 10, 110, 34)
+    nav_reset_game = pygame.Rect(V_WIDTH - 190, 10, 85, 34)
+    nav_fullscreen = pygame.Rect(V_WIDTH - 95, 10, 80, 34) # Кнопка во весь экран
 
     confirm_reset_yes = pygame.Rect(V_WIDTH // 2 - 130, 310, 110, 42)
     confirm_reset_no = pygame.Rect(V_WIDTH // 2 + 20, 310, 110, 42)
+
+    # Кнопки быстрого выбора ников для мобильного
+    btn_nick_keyboard = pygame.Rect(V_WIDTH//2 - 150, 245, 300, 40)
+    btn_nick_steve = pygame.Rect(V_WIDTH//2 - 150, 295, 95, 36)
+    btn_nick_alex = pygame.Rect(V_WIDTH//2 - 47, 295, 95, 36)
+    btn_nick_hero = pygame.Rect(V_WIDTH//2 + 55, 295, 95, 36)
 
     mob_btn_continue = pygame.Rect(V_WIDTH // 2 - 145, 475, 290, 48)
     boss_btn_finish = pygame.Rect(V_WIDTH // 2 - 150, 475, 300, 48)
@@ -670,8 +699,23 @@ async def main():
                     if len(player_name) < 14:
                         player_name += event.text
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    btn_start = pygame.Rect(V_WIDTH//2 - 100, 330, 200, 46)
+                    # Клик по кнопке клавиатуры Android
+                    if btn_nick_keyboard.collidepoint(mouse_pos):
+                        nick = prompt_mobile_keyboard(player_name)
+                        if nick:
+                            player_name = nick
+                    # Быстрый выбор
+                    elif btn_nick_steve.collidepoint(mouse_pos):
+                        player_name = "Стив"
+                    elif btn_nick_alex.collidepoint(mouse_pos):
+                        player_name = "Алекс"
+                    elif btn_nick_hero.collidepoint(mouse_pos):
+                        player_name = "Герой"
+
+                    # Кнопка старта игры
+                    btn_start = pygame.Rect(V_WIDTH//2 - 100, 345, 200, 46)
                     if btn_start.collidepoint(mouse_pos) and player_name.strip():
+                        request_browser_fullscreen()
                         player_data = get_player(player_name)
                         task_num = player_data.get("task_num", 1)
                         current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
@@ -685,6 +729,10 @@ async def main():
 
             elif game_state == "GAME":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    # Полноэкранный режим
+                    if nav_fullscreen.collidepoint(mouse_pos):
+                        request_browser_fullscreen()
+                        continue
                     if nav_workbench.collidepoint(mouse_pos):
                         game_state = "WORKBENCH"
                         continue
@@ -807,6 +855,7 @@ async def main():
                                         spawn_dust(280, 190, color=(220, 50, 50))
                                         boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
 
+            # БИТВА СО СТРАЖЕМ
             elif game_state == "MOB_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if mob_hp == 0 or mob_failed_reset:
@@ -862,10 +911,10 @@ async def main():
                                         spawn_hit_sparks(280, 185, is_shield=True)
                                         mob_battle_result_msg = f"Тотем спас от сброса биома! (Осталось: {p['totems']})"
                                         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
-                                    else:
-                                        mob_failed_reset = True
-                                        mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!"
-                                        spawn_dust(280, 190, color=(220, 50, 50))
+                                else:
+                                    mob_failed_reset = True
+                                    mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!"
+                                    spawn_dust(280, 190, color=(220, 50, 50))
 
             elif game_state == "REVIEW":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1012,32 +1061,40 @@ async def main():
             if ft[4] <= 0:
                 floating_texts.remove(ft)
 
-        # Отрисовка
+        # ==================== ОТРИСОВКА ====================
+
         if game_state == "LOGIN":
             canvas.fill((115, 170, 225))
-            card = pygame.Rect(V_WIDTH//2 - 240, 100, 480, 330)
+            card = pygame.Rect(V_WIDTH//2 - 240, 75, 480, 360)
             pygame.draw.rect(canvas, MC_GUI_BG, card)
             pygame.draw.rect(canvas, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
             pygame.draw.rect(canvas, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
             pygame.draw.rect(canvas, MC_GUI_BLACK, card, 3)
 
-            draw_emerald(canvas, V_WIDTH//2, 145, r=16)
+            draw_emerald(canvas, V_WIDTH//2, 115, r=16)
             t1 = FONT_TITLE.render("Математика в Майнкрафте", True, DARK_TEXT)
-            t2 = FONT_MED.render("Введи ник игрока для входа:", True, (80, 80, 80))
-            canvas.blit(t1, (V_WIDTH//2 - t1.get_width()//2, 175))
-            canvas.blit(t2, (V_WIDTH//2 - t2.get_width()//2, 215))
+            t2 = FONT_MED.render("Выбери имя героя или введи своё:", True, (80, 80, 80))
+            canvas.blit(t1, (V_WIDTH//2 - t1.get_width()//2, 145))
+            canvas.blit(t2, (V_WIDTH//2 - t2.get_width()//2, 180))
 
-            inp_box = pygame.Rect(V_WIDTH//2 - 150, 255, 300, 42)
-            pygame.draw.rect(canvas, (0, 0, 0), inp_box)
-            pygame.draw.rect(canvas, (160, 160, 160), inp_box, 2)
-            n_surf = FONT_BIG.render(player_name or "Ник...", True, WHITE if player_name else (130, 130, 130))
-            canvas.blit(n_surf, (inp_box.x + 10, inp_box.centery - n_surf.get_height()//2))
+            # Поле текущего ника
+            cur_nick_txt = FONT_BIG.render(f"Имя: {player_name or '...'}", True, (20, 40, 100))
+            canvas.blit(cur_nick_txt, (V_WIDTH//2 - cur_nick_txt.get_width()//2, 215))
 
-            btn_start = pygame.Rect(V_WIDTH//2 - 100, 325, 200, 44)
-            draw_mc_button(canvas, btn_start, "Играть в мире", btn_start.collidepoint(mouse_pos), bool(player_name.strip()))
+            # Кнопка вызова мобильной клавиатуры
+            draw_mc_button(canvas, btn_nick_keyboard, "Ввести с клавиатуры ⌨", btn_nick_keyboard.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(90, 120, 160))
+
+            # Кнопки быстрого выбора
+            draw_mc_button(canvas, btn_nick_steve, "Стив", btn_nick_steve.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(canvas, btn_nick_alex, "Алекс", btn_nick_alex.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(canvas, btn_nick_hero, "Герой", btn_nick_hero.collidepoint(mouse_pos), font_pref=FONT_MED)
+
+            btn_start = pygame.Rect(V_WIDTH//2 - 100, 345, 200, 46)
+            draw_mc_button(canvas, btn_start, "Играть в мире", btn_start.collidepoint(mouse_pos), bool(player_name.strip()), custom_bg=(60, 140, 70))
 
         elif game_state == "GAME":
             canvas.fill(cur_w["sky"])
+
             pygame.draw.rect(canvas, cur_w["ground"], (0, base_y + 15, V_WIDTH, V_HEIGHT - base_y - 15))
             pygame.draw.rect(canvas, (40, 30, 20), (0, base_y + 13, V_WIDTH, 3))
 
@@ -1071,10 +1128,10 @@ async def main():
 
             totems_cnt = player_data.get("totems", 0)
             luck_cnt = player_data.get("luck_timer", 0)
-            totem_info = f" | Тотемы: {totems_cnt}" if totems_cnt > 0 else ""
-            luck_info = f" | Удача: x2 ({luck_cnt})" if luck_cnt > 0 else ""
+            totem_info = f" | Т: {totems_cnt}" if totems_cnt > 0 else ""
+            luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 else ""
 
-            bar_box = pygame.Rect(15, 10, 390, 34)
+            bar_box = pygame.Rect(15, 10, 360, 34)
             pygame.draw.rect(canvas, MC_GUI_BG, bar_box)
             pygame.draw.rect(canvas, MC_GUI_LIGHT, (bar_box.left, bar_box.top, bar_box.width, 2))
             pygame.draw.rect(canvas, MC_GUI_DARK, (bar_box.left, bar_box.bottom - 2, bar_box.width, 2))
@@ -1087,6 +1144,7 @@ async def main():
             draw_mc_button(canvas, nav_workbench, "Верстак", nav_workbench.collidepoint(mouse_pos), font_pref=FONT_SMALL)
             draw_mc_button(canvas, nav_switch_player, "Игрок", nav_switch_player.collidepoint(mouse_pos), font_pref=FONT_SMALL)
             draw_mc_button(canvas, nav_reset_game, "Сброс", nav_reset_game.collidepoint(mouse_pos), font_pref=FONT_SMALL, custom_bg=(180, 60, 60))
+            draw_mc_button(canvas, nav_fullscreen, "Во весь ⛶", nav_fullscreen.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(90, 100, 120))
 
             exp_w = 460
             exp_bg = pygame.Rect(V_WIDTH//2 - exp_w//2, 54, exp_w, 10)
@@ -1150,6 +1208,7 @@ async def main():
             draw_mc_button(canvas, confirm_reset_yes, "Да, сбросить", confirm_reset_yes.collidepoint(mouse_pos), custom_bg=(210, 60, 60))
             draw_mc_button(canvas, confirm_reset_no, "Отмена", confirm_reset_no.collidepoint(mouse_pos), custom_bg=(90, 160, 90))
 
+        # АРЕНА МОБА
         elif game_state == "MOB_BATTLE":
             canvas.fill((45, 45, 52))
             arena_card = pygame.Rect(120, 20, 760, 560)
@@ -1215,6 +1274,7 @@ async def main():
                 btn_txt = "Продолжить путь!" if mob_hp == 0 else "Попробовать биом сначала"
                 draw_mc_button(canvas, mob_btn_continue, btn_txt, mob_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
+        # АРЕНА ДРАКОНА
         elif game_state == "BOSS_BATTLE":
             canvas.fill((15, 10, 25))
             arena_card = pygame.Rect(120, 20, 760, 560)
@@ -1323,6 +1383,7 @@ async def main():
 
             draw_mc_button(canvas, review_btn_continue, btn_txt, review_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
+        # ВЕРСТАК
         elif game_state == "WORKBENCH":
             canvas.fill((45, 45, 50))
             draw_mc_button(canvas, pygame.Rect(30, 12, 100, 32), "<< В мир", pygame.Rect(30, 12, 100, 32).collidepoint(mouse_pos), font_pref=FONT_SMALL)
@@ -1337,7 +1398,7 @@ async def main():
             draw_mc_button(canvas, tab_vehicles_rect, "Транспорт", tab_vehicles_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "VEHICLES" else (90, 90, 95))
             draw_mc_button(canvas, tab_artifacts_rect, "Оружие", tab_artifacts_rect.collidepoint(mouse_pos), 
-                       custom_bg=(170, 170, 175) if workbench_tab == "ARTIFACTS" else (90, 90, 95))
+                           custom_bg=(170, 170, 175) if workbench_tab == "ARTIFACTS" else (90, 90, 95))
             draw_mc_button(canvas, tab_potions_rect, "Зелья и Тотемы", tab_potions_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "POTIONS" else (90, 90, 95))
 
@@ -1432,8 +1493,7 @@ async def main():
 
         screen.blit(canvas, (0, 0))
         pygame.display.flip()
-        await asyncio.sleep(0) # Обязательно для работы в браузере!
+        await asyncio.sleep(0)
         clock.tick(60)
 
-# Точка входа
 asyncio.run(main())
