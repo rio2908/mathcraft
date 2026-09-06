@@ -11,9 +11,8 @@ from datetime import date, datetime
 pygame.init()
 pygame.font.init()
 
-V_WIDTH, V_HEIGHT = 1000, 600
-canvas = pygame.Surface((V_WIDTH, V_HEIGHT))
-screen = pygame.display.set_mode((V_WIDTH, V_HEIGHT))
+WIDTH, HEIGHT = 1000, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Майнкрафт: Марафон 50")
 clock = pygame.time.Clock()
 
@@ -21,10 +20,10 @@ def get_safe_font(size):
     return pygame.font.Font(None, size)
 
 FONT_TITLE = get_safe_font(28)
-FONT_BIG = get_safe_font(23)
-FONT_MED = get_safe_font(19)
-FONT_SMALL = get_safe_font(16)
-FONT_TINY = get_safe_font(13)
+FONT_BIG = get_safe_font(22)
+FONT_MED = get_safe_font(18)
+FONT_SMALL = get_safe_font(15)
+FONT_TINY = get_safe_font(12)
 
 # Палитра Minecraft
 MC_GUI_BG = (198, 198, 198)
@@ -74,19 +73,17 @@ POTIONS = {
 SAVE_FILE = "mc_math_save.json"
 LAST_PLAYER_FILE = "mc_last_player.txt"
 
-# Вызов мобильной клавиатуры через системный диалог браузера
 def prompt_mobile_keyboard(current_name=""):
     if sys.platform == "emscripten":
         try:
             import platform
-            result = platform.window.prompt("Введи ник игрока:", current_name or "Стив")
-            if result:
-                return str(result).strip()[:14]
+            res = platform.window.prompt("Введи ник игрока:", current_name or "Стив")
+            if res:
+                return str(res).strip()[:14]
         except Exception:
             pass
     return None
 
-# Переключение на полный экран (скрывает адресную строку браузера)
 def request_browser_fullscreen():
     if sys.platform == "emscripten":
         try:
@@ -502,7 +499,7 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         pygame.draw.rect(surf, h_col, (sx + 7, sy - 16, 6, 18))
         pygame.draw.rect(surf, (30, 30, 30), (sx - 13, sy - 16, 26, 18), 1)
 
-# ==================== ГЛАВНЫЙ ЦИКЛ ====================
+# ==================== ЗАПУСК ====================
 async def main():
     global player_name, player_data, game_state, task_num, combo_count, current_world_idx, step_in_world
     global hero_x, hero_y, target_x, target_y, is_moving, move_progress, squash_val, anim_tick
@@ -543,7 +540,7 @@ async def main():
     TOTAL_QUESTS = 50
     STEPS_PER_WORLD = 10
     base_y = 490
-    platforms = [(95 + i * ((V_WIDTH - 190) // STEPS_PER_WORLD), base_y) for i in range(STEPS_PER_WORLD + 1)]
+    platforms = [(95 + i * ((WIDTH - 190) // STEPS_PER_WORLD), base_y) for i in range(STEPS_PER_WORLD + 1)]
 
     last_saved_name = get_last_player()
     if last_saved_name:
@@ -598,29 +595,28 @@ async def main():
     workbench_tab = "HELMETS"
 
     btn_w, btn_h = 140, 54
-    start_btn_x = (V_WIDTH - (3 * btn_w + 40)) // 2
+    start_btn_x = (WIDTH - (3 * btn_w + 40)) // 2
     answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 235, btn_w, btn_h) for i in range(3)]
     mob_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
     boss_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
 
-    nav_workbench = pygame.Rect(V_WIDTH - 430, 10, 110, 34)
-    nav_switch_player = pygame.Rect(V_WIDTH - 310, 10, 110, 34)
-    nav_reset_game = pygame.Rect(V_WIDTH - 190, 10, 85, 34)
-    nav_fullscreen = pygame.Rect(V_WIDTH - 95, 10, 80, 34) # Кнопка во весь экран
+    nav_workbench = pygame.Rect(WIDTH - 430, 10, 110, 34)
+    nav_switch_player = pygame.Rect(WIDTH - 310, 10, 110, 34)
+    nav_reset_game = pygame.Rect(WIDTH - 190, 10, 85, 34)
+    nav_fullscreen = pygame.Rect(WIDTH - 95, 10, 80, 34)
 
-    confirm_reset_yes = pygame.Rect(V_WIDTH // 2 - 130, 310, 110, 42)
-    confirm_reset_no = pygame.Rect(V_WIDTH // 2 + 20, 310, 110, 42)
+    confirm_reset_yes = pygame.Rect(WIDTH // 2 - 130, 310, 110, 42)
+    confirm_reset_no = pygame.Rect(WIDTH // 2 + 20, 310, 110, 42)
 
-    # Кнопки быстрого выбора ников для мобильного
-    btn_nick_keyboard = pygame.Rect(V_WIDTH//2 - 150, 245, 300, 40)
-    btn_nick_steve = pygame.Rect(V_WIDTH//2 - 150, 295, 95, 36)
-    btn_nick_alex = pygame.Rect(V_WIDTH//2 - 47, 295, 95, 36)
-    btn_nick_hero = pygame.Rect(V_WIDTH//2 + 55, 295, 95, 36)
+    btn_nick_keyboard = pygame.Rect(WIDTH//2 - 150, 245, 300, 40)
+    btn_nick_steve = pygame.Rect(WIDTH//2 - 150, 295, 95, 36)
+    btn_nick_alex = pygame.Rect(WIDTH//2 - 47, 295, 95, 36)
+    btn_nick_hero = pygame.Rect(WIDTH//2 + 55, 295, 95, 36)
 
-    mob_btn_continue = pygame.Rect(V_WIDTH // 2 - 145, 475, 290, 48)
-    boss_btn_finish = pygame.Rect(V_WIDTH // 2 - 150, 475, 300, 48)
-    review_btn_continue = pygame.Rect(V_WIDTH // 2 - 160, 500, 320, 48)
-    final_win_restart_btn = pygame.Rect(V_WIDTH // 2 - 140, 385, 280, 46)
+    mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
+    boss_btn_finish = pygame.Rect(WIDTH // 2 - 150, 475, 300, 48)
+    review_btn_continue = pygame.Rect(WIDTH // 2 - 160, 500, 320, 48)
+    final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 385, 280, 46)
 
     tab_helmets_rect = pygame.Rect(140, 55, 170, 36)
     tab_vehicles_rect = pygame.Rect(325, 55, 175, 36)
@@ -633,7 +629,7 @@ async def main():
         mob_max_hp = 3
         mob_hp = mob_max_hp
         mob_failed_reset = False
-        mob_battle_result_msg = f"Реши пример, чтобы нанести удар!"
+        mob_battle_result_msg = "Реши пример, чтобы нанести удар!"
         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
 
     def start_boss_battle():
@@ -699,21 +695,14 @@ async def main():
                     if len(player_name) < 14:
                         player_name += event.text
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    # Клик по кнопке клавиатуры Android
                     if btn_nick_keyboard.collidepoint(mouse_pos):
                         nick = prompt_mobile_keyboard(player_name)
-                        if nick:
-                            player_name = nick
-                    # Быстрый выбор
-                    elif btn_nick_steve.collidepoint(mouse_pos):
-                        player_name = "Стив"
-                    elif btn_nick_alex.collidepoint(mouse_pos):
-                        player_name = "Алекс"
-                    elif btn_nick_hero.collidepoint(mouse_pos):
-                        player_name = "Герой"
+                        if nick: player_name = nick
+                    elif btn_nick_steve.collidepoint(mouse_pos): player_name = "Стив"
+                    elif btn_nick_alex.collidepoint(mouse_pos): player_name = "Алекс"
+                    elif btn_nick_hero.collidepoint(mouse_pos): player_name = "Герой"
 
-                    # Кнопка старта игры
-                    btn_start = pygame.Rect(V_WIDTH//2 - 100, 345, 200, 46)
+                    btn_start = pygame.Rect(WIDTH//2 - 100, 345, 200, 46)
                     if btn_start.collidepoint(mouse_pos) and player_name.strip():
                         request_browser_fullscreen()
                         player_data = get_player(player_name)
@@ -729,7 +718,6 @@ async def main():
 
             elif game_state == "GAME":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    # Полноэкранный режим
                     if nav_fullscreen.collidepoint(mouse_pos):
                         request_browser_fullscreen()
                         continue
@@ -849,13 +837,12 @@ async def main():
                                         spawn_hit_sparks(280, 185, is_shield=True)
                                         boss_msg = f"Тотем спас от ошибки! Осталось тотемов: {p['totems']}"
                                         boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
-                                    else:
-                                        boss_streak = max(0, boss_streak - 2)
-                                        boss_msg = f"ОШИБКА (было {boss_ans})! Откат на 2 шага назад!"
-                                        spawn_dust(280, 190, color=(220, 50, 50))
-                                        boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+                                else:
+                                    boss_streak = max(0, boss_streak - 2)
+                                    boss_msg = f"ОШИБКА (было {boss_ans})! Откат на 2 шага назад!"
+                                    spawn_dust(280, 190, color=(220, 50, 50))
+                                    boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
 
-            # БИТВА СО СТРАЖЕМ
             elif game_state == "MOB_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if mob_hp == 0 or mob_failed_reset:
@@ -1061,70 +1048,64 @@ async def main():
             if ft[4] <= 0:
                 floating_texts.remove(ft)
 
-        # ==================== ОТРИСОВКА ====================
-
+        # Отрисовка
         if game_state == "LOGIN":
-            canvas.fill((115, 170, 225))
-            card = pygame.Rect(V_WIDTH//2 - 240, 75, 480, 360)
-            pygame.draw.rect(canvas, MC_GUI_BG, card)
-            pygame.draw.rect(canvas, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
-            pygame.draw.rect(canvas, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
-            pygame.draw.rect(canvas, MC_GUI_BLACK, card, 3)
+            screen.fill((115, 170, 225))
+            card = pygame.Rect(WIDTH//2 - 240, 75, 480, 360)
+            pygame.draw.rect(screen, MC_GUI_BG, card)
+            pygame.draw.rect(screen, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
+            pygame.draw.rect(screen, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
+            pygame.draw.rect(screen, MC_GUI_BLACK, card, 3)
 
-            draw_emerald(canvas, V_WIDTH//2, 115, r=16)
+            draw_emerald(screen, WIDTH//2, 115, r=16)
             t1 = FONT_TITLE.render("Математика в Майнкрафте", True, DARK_TEXT)
             t2 = FONT_MED.render("Выбери имя героя или введи своё:", True, (80, 80, 80))
-            canvas.blit(t1, (V_WIDTH//2 - t1.get_width()//2, 145))
-            canvas.blit(t2, (V_WIDTH//2 - t2.get_width()//2, 180))
+            screen.blit(t1, (WIDTH//2 - t1.get_width()//2, 145))
+            screen.blit(t2, (WIDTH//2 - t2.get_width()//2, 180))
 
-            # Поле текущего ника
             cur_nick_txt = FONT_BIG.render(f"Имя: {player_name or '...'}", True, (20, 40, 100))
-            canvas.blit(cur_nick_txt, (V_WIDTH//2 - cur_nick_txt.get_width()//2, 215))
+            screen.blit(cur_nick_txt, (WIDTH//2 - cur_nick_txt.get_width()//2, 215))
 
-            # Кнопка вызова мобильной клавиатуры
-            draw_mc_button(canvas, btn_nick_keyboard, "Ввести с клавиатуры ⌨", btn_nick_keyboard.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(90, 120, 160))
+            draw_mc_button(screen, btn_nick_keyboard, "Ввести с клавиатуры", btn_nick_keyboard.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(90, 120, 160))
+            draw_mc_button(screen, btn_nick_steve, "Стив", btn_nick_steve.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(screen, btn_nick_alex, "Алекс", btn_nick_alex.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(screen, btn_nick_hero, "Герой", btn_nick_hero.collidepoint(mouse_pos), font_pref=FONT_MED)
 
-            # Кнопки быстрого выбора
-            draw_mc_button(canvas, btn_nick_steve, "Стив", btn_nick_steve.collidepoint(mouse_pos), font_pref=FONT_MED)
-            draw_mc_button(canvas, btn_nick_alex, "Алекс", btn_nick_alex.collidepoint(mouse_pos), font_pref=FONT_MED)
-            draw_mc_button(canvas, btn_nick_hero, "Герой", btn_nick_hero.collidepoint(mouse_pos), font_pref=FONT_MED)
-
-            btn_start = pygame.Rect(V_WIDTH//2 - 100, 345, 200, 46)
-            draw_mc_button(canvas, btn_start, "Играть в мире", btn_start.collidepoint(mouse_pos), bool(player_name.strip()), custom_bg=(60, 140, 70))
+            btn_start = pygame.Rect(WIDTH//2 - 100, 345, 200, 46)
+            draw_mc_button(screen, btn_start, "Играть в мире", btn_start.collidepoint(mouse_pos), bool(player_name.strip()), custom_bg=(60, 140, 70))
 
         elif game_state == "GAME":
-            canvas.fill(cur_w["sky"])
-
-            pygame.draw.rect(canvas, cur_w["ground"], (0, base_y + 15, V_WIDTH, V_HEIGHT - base_y - 15))
-            pygame.draw.rect(canvas, (40, 30, 20), (0, base_y + 13, V_WIDTH, 3))
+            screen.fill(cur_w["sky"])
+            pygame.draw.rect(screen, cur_w["ground"], (0, base_y + 15, WIDTH, HEIGHT - base_y - 15))
+            pygame.draw.rect(screen, (40, 30, 20), (0, base_y + 13, WIDTH, 3))
 
             for i, (px, py) in enumerate(platforms):
                 b_rect = pygame.Rect(px - 26, py, 52, 28)
-                pygame.draw.rect(canvas, cur_w["plat"], b_rect)
-                pygame.draw.rect(canvas, cur_w["top_plat"], (b_rect.x, b_rect.y, b_rect.width, 7))
-                pygame.draw.rect(canvas, MC_GUI_BLACK, b_rect, 2)
+                pygame.draw.rect(screen, cur_w["plat"], b_rect)
+                pygame.draw.rect(screen, cur_w["top_plat"], (b_rect.x, b_rect.y, b_rect.width, 7))
+                pygame.draw.rect(screen, MC_GUI_BLACK, b_rect, 2)
                 
                 if i == 5 and step_in_world < 5:
-                    draw_mob(canvas, px, py - 35, cur_w["mob_id"], anim_tick=anim_tick)
+                    draw_mob(screen, px, py - 35, cur_w["mob_id"], anim_tick=anim_tick)
                 if current_world_idx == 4 and i == 10 and task_num <= TOTAL_QUESTS:
-                    pygame.draw.circle(canvas, PURPLE, (px, py - 30), 12)
-                    pygame.draw.circle(canvas, WHITE, (px, py - 30), 4)
+                    pygame.draw.circle(screen, PURPLE, (px, py - 30), 12)
+                    pygame.draw.circle(screen, WHITE, (px, py - 30), 4)
 
                 num_lbl = FONT_SMALL.render(str(current_world_idx * 10 + i), True, WHITE if not cur_w["dark_text"] else DARK_TEXT)
-                canvas.blit(num_lbl, (px - num_lbl.get_width()//2, py + 30))
+                screen.blit(num_lbl, (px - num_lbl.get_width()//2, py + 30))
 
             for pt in particles:
-                pygame.draw.rect(canvas, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
+                pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
-            draw_steve_animated(canvas, int(hero_x), int(hero_y), cur_v_type, is_upgraded, 
+            draw_steve_animated(screen, int(hero_x), int(hero_y), cur_v_type, is_upgraded, 
                                 helmet=player_data.get("helmet", "none"), 
                                 anim_tick=anim_tick, is_moving=is_moving, squash=squash_val, sword_swing=sword_swing_timer)
 
             for ft in floating_texts:
                 f_surf = FONT_BIG.render(ft[0], True, ft[3])
                 f_shadow = FONT_BIG.render(ft[0], True, MC_GUI_BLACK)
-                canvas.blit(f_shadow, (int(ft[1]) - f_surf.get_width()//2 + 1, int(ft[2]) + 1))
-                canvas.blit(f_surf, (int(ft[1]) - f_surf.get_width()//2, int(ft[2])))
+                screen.blit(f_shadow, (int(ft[1]) - f_surf.get_width()//2 + 1, int(ft[2]) + 1))
+                screen.blit(f_surf, (int(ft[1]) - f_surf.get_width()//2, int(ft[2])))
 
             totems_cnt = player_data.get("totems", 0)
             luck_cnt = player_data.get("luck_timer", 0)
@@ -1132,43 +1113,43 @@ async def main():
             luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 else ""
 
             bar_box = pygame.Rect(15, 10, 360, 34)
-            pygame.draw.rect(canvas, MC_GUI_BG, bar_box)
-            pygame.draw.rect(canvas, MC_GUI_LIGHT, (bar_box.left, bar_box.top, bar_box.width, 2))
-            pygame.draw.rect(canvas, MC_GUI_DARK, (bar_box.left, bar_box.bottom - 2, bar_box.width, 2))
-            pygame.draw.rect(canvas, MC_GUI_BLACK, bar_box, 2)
+            pygame.draw.rect(screen, MC_GUI_BG, bar_box)
+            pygame.draw.rect(screen, MC_GUI_LIGHT, (bar_box.left, bar_box.top, bar_box.width, 2))
+            pygame.draw.rect(screen, MC_GUI_DARK, (bar_box.left, bar_box.bottom - 2, bar_box.width, 2))
+            pygame.draw.rect(screen, MC_GUI_BLACK, bar_box, 2)
 
-            draw_emerald(canvas, 32, 27, r=8)
+            draw_emerald(screen, 32, 27, r=8)
             info_txt = FONT_MED.render(f"{player_data['emeralds']}{totem_info}{luck_info} | {player_name}", True, DARK_TEXT)
-            canvas.blit(info_txt, (46, 17))
+            screen.blit(info_txt, (46, 17))
 
-            draw_mc_button(canvas, nav_workbench, "Верстак", nav_workbench.collidepoint(mouse_pos), font_pref=FONT_SMALL)
-            draw_mc_button(canvas, nav_switch_player, "Игрок", nav_switch_player.collidepoint(mouse_pos), font_pref=FONT_SMALL)
-            draw_mc_button(canvas, nav_reset_game, "Сброс", nav_reset_game.collidepoint(mouse_pos), font_pref=FONT_SMALL, custom_bg=(180, 60, 60))
-            draw_mc_button(canvas, nav_fullscreen, "Во весь ⛶", nav_fullscreen.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(90, 100, 120))
+            draw_mc_button(screen, nav_workbench, "Верстак", nav_workbench.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            draw_mc_button(screen, nav_switch_player, "Игрок", nav_switch_player.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            draw_mc_button(screen, nav_reset_game, "Сброс", nav_reset_game.collidepoint(mouse_pos), font_pref=FONT_SMALL, custom_bg=(180, 60, 60))
+            draw_mc_button(screen, nav_fullscreen, "Во весь", nav_fullscreen.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(90, 100, 120))
 
             exp_w = 460
-            exp_bg = pygame.Rect(V_WIDTH//2 - exp_w//2, 54, exp_w, 10)
-            pygame.draw.rect(canvas, (30, 30, 30), exp_bg)
+            exp_bg = pygame.Rect(WIDTH//2 - exp_w//2, 54, exp_w, 10)
+            pygame.draw.rect(screen, (30, 30, 30), exp_bg)
             fill_w = int(min(task_num - 1, TOTAL_QUESTS) / TOTAL_QUESTS * exp_w)
-            pygame.draw.rect(canvas, (120, 255, 60), (exp_bg.x, exp_bg.y, fill_w, 10))
-            pygame.draw.rect(canvas, MC_GUI_BLACK, exp_bg, 2)
+            pygame.draw.rect(screen, (120, 255, 60), (exp_bg.x, exp_bg.y, fill_w, 10))
+            pygame.draw.rect(screen, MC_GUI_BLACK, exp_bg, 2)
 
             v_title = cur_w["upg_name"] if is_upgraded else cur_w["v_name"]
             title_world = FONT_BIG.render(f"{cur_w['name']}  ({v_title})  [{min(task_num, 50)} / {TOTAL_QUESTS}]", True, DARK_TEXT if cur_w["dark_text"] else WHITE)
-            canvas.blit(title_world, (V_WIDTH//2 - title_world.get_width()//2, 72))
+            screen.blit(title_world, (WIDTH//2 - title_world.get_width()//2, 72))
 
             if combo_count >= 5:
-                draw_readable_badge(canvas, V_WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
+                draw_readable_badge(screen, WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
 
             if task_num <= TOTAL_QUESTS:
-                q_box = pygame.Rect(V_WIDTH//2 - 130, 152, 260, 58)
-                pygame.draw.rect(canvas, (160, 115, 65), q_box)
-                pygame.draw.rect(canvas, (100, 65, 30), q_box, 3)
+                q_box = pygame.Rect(WIDTH//2 - 130, 152, 260, 58)
+                pygame.draw.rect(screen, (160, 115, 65), q_box)
+                pygame.draw.rect(screen, (100, 65, 30), q_box, 3)
                 q_txt = FONT_TITLE.render(question_str, True, WHITE)
-                canvas.blit(q_txt, (q_box.centerx - q_txt.get_width()//2, q_box.centery - q_txt.get_height()//2))
+                screen.blit(q_txt, (q_box.centerx - q_txt.get_width()//2, q_box.centery - q_txt.get_height()//2))
 
                 for i, rect in enumerate(answer_buttons):
-                    draw_mc_button(canvas, rect, str(choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                    draw_mc_button(screen, rect, str(choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
 
                 if combo_count >= 5:
                     msg_b_col = (140, 120, 40)
@@ -1177,321 +1158,321 @@ async def main():
                 else:
                     msg_b_col = (70, 70, 75)
 
-                draw_readable_badge(canvas, V_WIDTH // 2, 318, message, border_col=msg_b_col, text_col=WHITE, font=FONT_MED)
+                draw_readable_badge(screen, WIDTH // 2, 318, message, border_col=msg_b_col, text_col=WHITE, font=FONT_MED)
             else:
-                win_box = pygame.Rect(V_WIDTH//2 - 280, 150, 560, 290)
-                pygame.draw.rect(canvas, MC_GUI_BG, win_box)
-                pygame.draw.rect(canvas, MC_GOLD, win_box, 4)
+                win_box = pygame.Rect(WIDTH//2 - 280, 150, 560, 290)
+                pygame.draw.rect(screen, MC_GUI_BG, win_box)
+                pygame.draw.rect(screen, MC_GOLD, win_box, 4)
                 w1 = FONT_TITLE.render("МАРАФОН 50 ПРОЙДЕН! ДРАКОН СВЕРГНУТ!", True, GREEN)
                 w2 = FONT_BIG.render("Ты абсолютный чемпион Математики в Minecraft!", True, DARK_TEXT)
                 w3 = FONT_MED.render("Все 50 сложнейших примеров успешно решены!", True, (80, 80, 80))
-                canvas.blit(w1, (V_WIDTH//2 - w1.get_width()//2, 180))
-                canvas.blit(w2, (V_WIDTH//2 - w2.get_width()//2, 235))
-                canvas.blit(w3, (V_WIDTH//2 - w3.get_width()//2, 280))
+                screen.blit(w1, (WIDTH//2 - w1.get_width()//2, 180))
+                screen.blit(w2, (WIDTH//2 - w2.get_width()//2, 235))
+                screen.blit(w3, (WIDTH//2 - w3.get_width()//2, 280))
 
-                draw_mc_button(canvas, final_win_restart_btn, "Начать новый марафон ↺", final_win_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
+                draw_mc_button(screen, final_win_restart_btn, "Начать новый марафон ↺", final_win_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
 
         elif game_state == "CONFIRM_RESET":
-            canvas.fill((40, 40, 45))
-            m_box = pygame.Rect(V_WIDTH // 2 - 240, 160, 480, 230)
-            pygame.draw.rect(canvas, MC_GUI_BG, m_box)
-            pygame.draw.rect(canvas, MC_GUI_BLACK, m_box, 3)
+            screen.fill((40, 40, 45))
+            m_box = pygame.Rect(WIDTH // 2 - 240, 160, 480, 230)
+            pygame.draw.rect(screen, MC_GUI_BG, m_box)
+            pygame.draw.rect(screen, MC_GUI_BLACK, m_box, 3)
 
             t_r1 = FONT_TITLE.render("Сбросить марафон сначала?", True, RED)
             t_r2 = FONT_MED.render("Ты вернёшься на 1-й пример 1-го мира.", True, DARK_TEXT)
             t_r3 = FONT_SMALL.render("(Твои изумруды, шлемы, тотемы СОХРАНЯТСЯ)", True, (40, 140, 40))
 
-            canvas.blit(t_r1, (V_WIDTH // 2 - t_r1.get_width() // 2, 190))
-            canvas.blit(t_r2, (V_WIDTH // 2 - t_r2.get_width() // 2, 235))
-            canvas.blit(t_r3, (V_WIDTH // 2 - t_r3.get_width() // 2, 265))
+            screen.blit(t_r1, (WIDTH // 2 - t_r1.get_width() // 2, 190))
+            screen.blit(t_r2, (WIDTH // 2 - t_r2.get_width() // 2, 235))
+            screen.blit(t_r3, (WIDTH // 2 - t_r3.get_width() // 2, 265))
 
-            draw_mc_button(canvas, confirm_reset_yes, "Да, сбросить", confirm_reset_yes.collidepoint(mouse_pos), custom_bg=(210, 60, 60))
-            draw_mc_button(canvas, confirm_reset_no, "Отмена", confirm_reset_no.collidepoint(mouse_pos), custom_bg=(90, 160, 90))
+            draw_mc_button(screen, confirm_reset_yes, "Да, сбросить", confirm_reset_yes.collidepoint(mouse_pos), custom_bg=(210, 60, 60))
+            draw_mc_button(screen, confirm_reset_no, "Отмена", confirm_reset_no.collidepoint(mouse_pos), custom_bg=(90, 160, 90))
 
         # АРЕНА МОБА
         elif game_state == "MOB_BATTLE":
-            canvas.fill((45, 45, 52))
+            screen.fill((45, 45, 52))
             arena_card = pygame.Rect(120, 20, 760, 560)
-            pygame.draw.rect(canvas, MC_GUI_BG, arena_card)
-            pygame.draw.rect(canvas, MC_GUI_BLACK, arena_card, 3)
+            pygame.draw.rect(screen, MC_GUI_BG, arena_card)
+            pygame.draw.rect(screen, MC_GUI_BLACK, arena_card, 3)
 
             mob_name = cur_w["mob_name"]
             t_mob = FONT_TITLE.render(f"БИТВА СО СТРАЖЕМ: {mob_name.upper()}!", True, RED)
-            canvas.blit(t_mob, (V_WIDTH // 2 - t_mob.get_width() // 2, 38))
+            screen.blit(t_mob, (WIDTH // 2 - t_mob.get_width() // 2, 38))
 
-            pygame.draw.rect(canvas, (100, 100, 105), (210, 205, 140, 20))
-            pygame.draw.rect(canvas, (60, 60, 65), (210, 205, 140, 20), 2)
+            pygame.draw.rect(screen, (100, 100, 105), (210, 205, 140, 20))
+            pygame.draw.rect(screen, (60, 60, 65), (210, 205, 140, 20), 2)
             s_lbl = FONT_SMALL.render(player_name, True, DARK_TEXT)
-            canvas.blit(s_lbl, (280 - s_lbl.get_width() // 2, 95))
-            draw_steve_animated(canvas, 280, 175, cur_v_type, is_upgraded,
+            screen.blit(s_lbl, (280 - s_lbl.get_width() // 2, 95))
+            draw_steve_animated(screen, 280, 175, cur_v_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
 
-            vs_box = pygame.Rect(V_WIDTH // 2 - 24, 150, 48, 32)
-            pygame.draw.rect(canvas, (220, 60, 60), vs_box, border_radius=6)
+            vs_box = pygame.Rect(WIDTH // 2 - 24, 150, 48, 32)
+            pygame.draw.rect(screen, (220, 60, 60), vs_box, border_radius=6)
             vs_txt = FONT_BIG.render("VS", True, WHITE)
-            canvas.blit(vs_txt, (vs_box.centerx - vs_txt.get_width() // 2, vs_box.centery - vs_txt.get_height() // 2))
+            screen.blit(vs_txt, (vs_box.centerx - vs_txt.get_width() // 2, vs_box.centery - vs_txt.get_height() // 2))
 
-            pygame.draw.rect(canvas, (100, 100, 105), (650, 205, 140, 20))
-            pygame.draw.rect(canvas, (60, 60, 65), (650, 205, 140, 20), 2)
+            pygame.draw.rect(screen, (100, 100, 105), (650, 205, 140, 20))
+            pygame.draw.rect(screen, (60, 60, 65), (650, 205, 140, 20), 2)
             
             hearts_start_x = 720 - (mob_max_hp * 26) // 2 + 13
             for h_i in range(mob_max_hp):
-                draw_mc_heart(canvas, hearts_start_x + h_i * 26, 95, filled=(h_i < mob_hp))
+                draw_mc_heart(screen, hearts_start_x + h_i * 26, 95, filled=(h_i < mob_hp))
 
-            draw_mob(canvas, 720, 165, cur_w["mob_id"], anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
+            draw_mob(screen, 720, 165, cur_w["mob_id"], anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
 
             for pt in particles:
-                pygame.draw.rect(canvas, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
+                pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
             if mob_hp > 0 and not mob_failed_reset:
-                q_mob_box = pygame.Rect(V_WIDTH // 2 - 140, 260, 280, 62)
-                pygame.draw.rect(canvas, (160, 115, 65), q_mob_box)
-                pygame.draw.rect(canvas, (100, 65, 30), q_mob_box, 3)
+                q_mob_box = pygame.Rect(WIDTH // 2 - 140, 260, 280, 62)
+                pygame.draw.rect(screen, (160, 115, 65), q_mob_box)
+                pygame.draw.rect(screen, (100, 65, 30), q_mob_box, 3)
                 q_txt = FONT_TITLE.render(mob_task_str, True, WHITE)
-                canvas.blit(q_txt, (q_mob_box.centerx - q_txt.get_width() // 2, q_mob_box.centery - q_txt.get_height() // 2))
+                screen.blit(q_txt, (q_mob_box.centerx - q_txt.get_width() // 2, q_mob_box.centery - q_txt.get_height() // 2))
 
+                # СТРОГО mob_choices[i]
                 for i, rect in enumerate(mob_answer_buttons):
-                    draw_mc_button(canvas, rect, str(mob_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                    draw_mc_button(screen, rect, str(mob_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
 
-                draw_readable_badge(canvas, V_WIDTH // 2, 425, mob_battle_result_msg, border_col=(70, 70, 75), text_col=WHITE, font=FONT_MED)
+                draw_readable_badge(screen, WIDTH // 2, 425, mob_battle_result_msg, border_col=(70, 70, 75), text_col=WHITE, font=FONT_MED)
 
                 totem_hint = f"Активных тотемов защиты: {player_data.get('totems', 0)} шт." if player_data.get('totems', 0) > 0 else "Тотемов нет! Ошибка сбросит биом в начало!"
                 th_surf = FONT_SMALL.render(totem_hint, True, (40, 130, 40) if player_data.get('totems', 0) > 0 else (160, 60, 60))
-                canvas.blit(th_surf, (V_WIDTH // 2 - th_surf.get_width() // 2, 460))
+                screen.blit(th_surf, (WIDTH // 2 - th_surf.get_width() // 2, 460))
             else:
-                res_box = pygame.Rect(V_WIDTH // 2 - 250, 260, 500, 185)
-                pygame.draw.rect(canvas, WHITE, res_box, border_radius=8)
-                pygame.draw.rect(canvas, GREEN if mob_hp == 0 else RED, res_box, 3, border_radius=8)
+                res_box = pygame.Rect(WIDTH // 2 - 250, 260, 500, 185)
+                pygame.draw.rect(screen, WHITE, res_box, border_radius=8)
+                pygame.draw.rect(screen, GREEN if mob_hp == 0 else RED, res_box, 3, border_radius=8)
 
                 r_title = FONT_BIG.render(mob_battle_result_msg, True, GREEN if mob_hp == 0 else RED)
-                canvas.blit(r_title, (V_WIDTH // 2 - r_title.get_width() // 2, 290))
+                screen.blit(r_title, (WIDTH // 2 - r_title.get_width() // 2, 290))
 
                 sub_info = "Ты одолел стража биома и добыл трофеи!" if mob_hp == 0 else "Моб нанёс критический удар и отбросил тебя назад..."
                 sub_s = FONT_MED.render(sub_info, True, DARK_TEXT)
-                canvas.blit(sub_s, (V_WIDTH // 2 - sub_s.get_width() // 2, 345))
+                screen.blit(sub_s, (WIDTH // 2 - sub_s.get_width() // 2, 345))
 
                 btn_txt = "Продолжить путь!" if mob_hp == 0 else "Попробовать биом сначала"
-                draw_mc_button(canvas, mob_btn_continue, btn_txt, mob_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
+                draw_mc_button(screen, mob_btn_continue, btn_txt, mob_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         # АРЕНА ДРАКОНА
         elif game_state == "BOSS_BATTLE":
-            canvas.fill((15, 10, 25))
+            screen.fill((15, 10, 25))
             arena_card = pygame.Rect(120, 20, 760, 560)
-            pygame.draw.rect(canvas, (35, 30, 45), arena_card)
-            pygame.draw.rect(canvas, PURPLE, arena_card, 3)
+            pygame.draw.rect(screen, (35, 30, 45), arena_card)
+            pygame.draw.rect(screen, PURPLE, arena_card, 3)
 
             bbar_w = 500
-            bbar_rect = pygame.Rect(V_WIDTH // 2 - bbar_w // 2, 38, bbar_w, 14)
-            pygame.draw.rect(canvas, (20, 15, 30), bbar_rect)
+            bbar_rect = pygame.Rect(WIDTH // 2 - bbar_w // 2, 38, bbar_w, 14)
+            pygame.draw.rect(screen, (20, 15, 30), bbar_rect)
             boss_fill = int((boss_max_hp - boss_streak) / boss_max_hp * bbar_w)
-            pygame.draw.rect(canvas, (210, 60, 240), (bbar_rect.x, bbar_rect.y, boss_fill, 14))
-            pygame.draw.rect(canvas, WHITE, bbar_rect, 2)
+            pygame.draw.rect(screen, (210, 60, 240), (bbar_rect.x, bbar_rect.y, boss_fill, 14))
+            pygame.draw.rect(screen, WHITE, bbar_rect, 2)
 
             t_boss = FONT_TITLE.render(f"ФИНАЛЬНЫЙ БОСС: ДРАКОН КРАЯ", True, (240, 140, 255))
-            canvas.blit(t_boss, (V_WIDTH // 2 - t_boss.get_width() // 2, 58))
+            screen.blit(t_boss, (WIDTH // 2 - t_boss.get_width() // 2, 58))
 
-            pygame.draw.rect(canvas, (50, 45, 60), (210, 215, 140, 18))
-            draw_steve_animated(canvas, 280, 185, "dragon", True,
+            pygame.draw.rect(screen, (50, 45, 60), (210, 215, 140, 18))
+            draw_steve_animated(screen, 280, 185, "dragon", True,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
             
             hearts_start_x = 720 - (boss_max_hp * 26) // 2 + 13
             for h_i in range(boss_max_hp):
-                draw_mc_heart(canvas, hearts_start_x + h_i * 26, 95, filled=(h_i < boss_streak))
+                draw_mc_heart(screen, hearts_start_x + h_i * 26, 95, filled=(h_i < boss_streak))
 
-            draw_ender_dragon_boss(canvas, 720, 175, anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
+            draw_ender_dragon_boss(screen, 720, 175, anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
 
             for pt in particles:
-                pygame.draw.rect(canvas, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
+                pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
             if not boss_won:
-                q_boss_box = pygame.Rect(V_WIDTH // 2 - 140, 260, 280, 62)
-                pygame.draw.rect(canvas, (160, 115, 65), q_boss_box)
-                pygame.draw.rect(canvas, (100, 65, 30), q_boss_box, 3)
+                q_boss_box = pygame.Rect(WIDTH // 2 - 140, 260, 280, 62)
+                pygame.draw.rect(screen, (160, 115, 65), q_boss_box)
+                pygame.draw.rect(screen, (100, 65, 30), q_boss_box, 3)
                 q_txt = FONT_TITLE.render(boss_task_str, True, WHITE)
-                canvas.blit(q_txt, (q_boss_box.centerx - q_txt.get_width() // 2, q_boss_box.centery - q_txt.get_height() // 2))
+                screen.blit(q_txt, (q_boss_box.centerx - q_txt.get_width() // 2, q_boss_box.centery - q_txt.get_height() // 2))
 
                 for i, rect in enumerate(boss_answer_buttons):
-                    draw_mc_button(canvas, rect, str(boss_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                    draw_mc_button(screen, rect, str(boss_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
 
-                draw_readable_badge(canvas, V_WIDTH // 2, 425, boss_msg, border_col=(90, 70, 120), text_col=WHITE, font=FONT_MED)
+                draw_readable_badge(screen, WIDTH // 2, 425, boss_msg, border_col=(90, 70, 120), text_col=WHITE, font=FONT_MED)
 
                 totem_hint = f"Тотемов для защиты: {player_data.get('totems', 0)} шт."
                 th_surf = FONT_SMALL.render(totem_hint, True, (200, 180, 240))
-                canvas.blit(th_surf, (V_WIDTH // 2 - th_surf.get_width() // 2, 460))
+                screen.blit(th_surf, (WIDTH // 2 - th_surf.get_width() // 2, 460))
             else:
-                res_box = pygame.Rect(V_WIDTH // 2 - 250, 250, 500, 195)
-                pygame.draw.rect(canvas, (40, 35, 50), res_box, border_radius=8)
-                pygame.draw.rect(canvas, MC_GOLD, res_box, 3, border_radius=8)
+                res_box = pygame.Rect(WIDTH // 2 - 250, 250, 500, 195)
+                pygame.draw.rect(screen, (40, 35, 50), res_box, border_radius=8)
+                pygame.draw.rect(screen, MC_GOLD, res_box, 3, border_radius=8)
 
                 r_title = FONT_TITLE.render("ДРАКОН КРАЯ ПОБЕЖДЁН!", True, GREEN)
-                canvas.blit(r_title, (V_WIDTH // 2 - r_title.get_width() // 2, 280))
+                screen.blit(r_title, (WIDTH // 2 - r_title.get_width() // 2, 280))
 
                 sub_info = f"Ты решил все {boss_max_hp} сложнейших примеров подряд!"
                 sub_reward = "Супер-награда за победу: +50 ИЗУМРУДОВ!"
-                canvas.blit(FONT_MED.render(sub_info, True, WHITE), (V_WIDTH // 2 - FONT_MED.size(sub_info)[0] // 2, 325))
-                canvas.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (V_WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 360))
+                screen.blit(FONT_MED.render(sub_info, True, WHITE), (WIDTH // 2 - FONT_MED.size(sub_info)[0] // 2, 325))
+                screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 360))
 
-                draw_mc_button(canvas, boss_btn_finish, "Завершить Марафон!", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED)
+                draw_mc_button(screen, boss_btn_finish, "Завершить Марафон!", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         elif game_state == "REVIEW":
-            canvas.fill((50, 50, 55))
-            card = pygame.Rect(V_WIDTH // 2 - 320, 25, 640, 540)
-            pygame.draw.rect(canvas, MC_GUI_BG, card)
-            pygame.draw.rect(canvas, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
-            pygame.draw.rect(canvas, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
-            pygame.draw.rect(canvas, MC_GUI_BLACK, card, 3)
+            screen.fill((50, 50, 55))
+            card = pygame.Rect(WIDTH // 2 - 320, 25, 640, 540)
+            pygame.draw.rect(screen, MC_GUI_BG, card)
+            pygame.draw.rect(screen, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
+            pygame.draw.rect(screen, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
+            pygame.draw.rect(screen, MC_GUI_BLACK, card, 3)
 
             fin_world_idx = ((task_num - 2) // STEPS_PER_WORLD)
             w_title = WORLDS[fin_world_idx]["name"]
 
             t_head = FONT_TITLE.render(f"Итоги биома: {w_title}", True, DARK_TEXT)
-            canvas.blit(t_head, (V_WIDTH // 2 - t_head.get_width() // 2, 45))
+            screen.blit(t_head, (WIDTH // 2 - t_head.get_width() // 2, 45))
 
             if len(ten_errors) > 0:
                 sub = FONT_MED.render(f"Неудачные попытки: {len(ten_errors)}. Давай закрепим рецепты!", True, (160, 30, 30))
-                canvas.blit(sub, (V_WIDTH // 2 - sub.get_width() // 2, 85))
+                screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 85))
 
                 for idx, err in enumerate(ten_errors[:6]):
                     y_pos = 130 + idx * 54
                     r_box = pygame.Rect(card.x + 35, y_pos, card.width - 70, 46)
-                    pygame.draw.rect(canvas, (220, 220, 220), r_box)
-                    pygame.draw.rect(canvas, MC_GUI_DARK, r_box, 2)
+                    pygame.draw.rect(screen, (220, 220, 220), r_box)
+                    pygame.draw.rect(screen, MC_GUI_DARK, r_box, 2)
 
                     ex_surf = FONT_BIG.render(f"{err['expr']} =", True, DARK_TEXT)
-                    canvas.blit(ex_surf, (r_box.x + 20, r_box.centery - ex_surf.get_height() // 2))
+                    screen.blit(ex_surf, (r_box.x + 20, r_box.centery - ex_surf.get_height() // 2))
 
                     w_tag = FONT_MED.render(f"Твой ответ: {err['wrong']} (ошибка)", True, RED)
-                    canvas.blit(w_tag, (r_box.x + 160, r_box.centery - w_tag.get_height() // 2))
+                    screen.blit(w_tag, (r_box.x + 160, r_box.centery - w_tag.get_height() // 2))
 
                     c_tag = FONT_BIG.render(f"Верно: {err['correct']}", True, GREEN)
-                    canvas.blit(c_tag, (r_box.right - c_tag.get_width() - 20, r_box.centery - c_tag.get_height() // 2))
+                    screen.blit(c_tag, (r_box.right - c_tag.get_width() - 20, r_box.centery - c_tag.get_height() // 2))
 
                 btn_txt = "Все понятно, в следующий биом!"
             else:
-                draw_emerald(canvas, V_WIDTH // 2, 165, r=26)
+                draw_emerald(screen, WIDTH // 2, 165, r=26)
                 c1 = FONT_TITLE.render("ИДЕАЛЬНО! ЧИСТЫЙ КРАФТ!", True, GREEN)
                 c2 = FONT_MED.render("Ты прошёл весь биом без единой ошибки!", True, DARK_TEXT)
                 c3 = FONT_BIG.render("Бонус жителя деревни: +5 Изумрудов!", True, (0, 140, 50))
 
-                canvas.blit(c1, (V_WIDTH // 2 - c1.get_width() // 2, 220))
-                canvas.blit(c2, (V_WIDTH // 2 - c2.get_width() // 2, 270))
-                canvas.blit(c3, (V_WIDTH // 2 - c3.get_width() // 2, 320))
+                screen.blit(c1, (WIDTH // 2 - c1.get_width() // 2, 220))
+                screen.blit(c2, (WIDTH // 2 - c2.get_width() // 2, 270))
+                screen.blit(c3, (WIDTH // 2 - c3.get_width() // 2, 320))
 
                 btn_txt = "В следующий биом!"
 
-            draw_mc_button(canvas, review_btn_continue, btn_txt, review_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(screen, review_btn_continue, btn_txt, review_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         # ВЕРСТАК
         elif game_state == "WORKBENCH":
-            canvas.fill((45, 45, 50))
-            draw_mc_button(canvas, pygame.Rect(30, 12, 100, 32), "<< В мир", pygame.Rect(30, 12, 100, 32).collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            screen.fill((45, 45, 50))
+            draw_mc_button(screen, pygame.Rect(30, 12, 100, 32), "<< В мир", pygame.Rect(30, 12, 100, 32).collidepoint(mouse_pos), font_pref=FONT_SMALL)
 
             title = FONT_TITLE.render("Верстак и Алхимическая Стойка", True, WHITE)
-            canvas.blit(title, (V_WIDTH//2 - title.get_width()//2, 15))
+            screen.blit(title, (WIDTH//2 - title.get_width()//2, 15))
             b_count = FONT_BIG.render(f"Изумруды: {player_data['emeralds']}", True, (100, 255, 120))
-            canvas.blit(b_count, (V_WIDTH - b_count.get_width() - 40, 18))
+            screen.blit(b_count, (WIDTH - b_count.get_width() - 40, 18))
 
-            draw_mc_button(canvas, tab_helmets_rect, "Шлемы", tab_helmets_rect.collidepoint(mouse_pos), 
+            draw_mc_button(screen, tab_helmets_rect, "Шлемы", tab_helmets_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "HELMETS" else (90, 90, 95))
-            draw_mc_button(canvas, tab_vehicles_rect, "Транспорт", tab_vehicles_rect.collidepoint(mouse_pos), 
+            draw_mc_button(screen, tab_vehicles_rect, "Транспорт", tab_vehicles_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "VEHICLES" else (90, 90, 95))
-            draw_mc_button(canvas, tab_artifacts_rect, "Оружие", tab_artifacts_rect.collidepoint(mouse_pos), 
+            draw_mc_button(screen, tab_artifacts_rect, "Оружие", tab_artifacts_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "ARTIFACTS" else (90, 90, 95))
-            draw_mc_button(canvas, tab_potions_rect, "Зелья и Тотемы", tab_potions_rect.collidepoint(mouse_pos), 
+            draw_mc_button(screen, tab_potions_rect, "Зелья и Тотемы", tab_potions_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "POTIONS" else (90, 90, 95))
 
-            pygame.draw.rect(canvas, MC_GUI_BG, content_box)
-            pygame.draw.rect(canvas, MC_GUI_BLACK, content_box, 3)
+            pygame.draw.rect(screen, MC_GUI_BG, content_box)
+            pygame.draw.rect(screen, MC_GUI_BLACK, content_box, 3)
 
             if workbench_tab == "HELMETS":
                 for idx, (h_id, h_info) in enumerate(HELMETS.items()):
                     row_rect, slot_rect, b_btn = get_shop_row_rects(idx, len(HELMETS))
-                    pygame.draw.rect(canvas, (220, 220, 220), row_rect)
-                    pygame.draw.rect(canvas, MC_GUI_DARK, row_rect, 1)
+                    pygame.draw.rect(screen, (220, 220, 220), row_rect)
+                    pygame.draw.rect(screen, MC_GUI_DARK, row_rect, 1)
 
-                    draw_mc_slot_frame(canvas, slot_rect.x, slot_rect.y, 50)
-                    draw_item_icon(canvas, f"helm_{h_id}", slot_rect.centerx, slot_rect.centery)
+                    draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
+                    draw_item_icon(screen, f"helm_{h_id}", slot_rect.centerx, slot_rect.centery)
 
-                    canvas.blit(FONT_MED.render(h_info["name"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 10))
-                    canvas.blit(FONT_SMALL.render(f"Цена: {h_info['cost']} изумр." if h_info["cost"] > 0 else "Бесплатно", True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
+                    screen.blit(FONT_MED.render(h_info["name"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 10))
+                    screen.blit(FONT_SMALL.render(f"Цена: {h_info['cost']} изумр." if h_info["cost"] > 0 else "Бесплатно", True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
 
                     is_unlocked = h_id in player_data.get("unlocked_helmets", ["none"])
                     is_equipped = player_data.get("helmet") == h_id
 
                     if is_equipped:
-                        draw_mc_button(canvas, b_btn, "Надето", False, False, font_pref=FONT_SMALL)
+                        draw_mc_button(screen, b_btn, "Надето", False, False, font_pref=FONT_SMALL)
                     elif is_unlocked:
-                        draw_mc_button(canvas, b_btn, "Надеть", b_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+                        draw_mc_button(screen, b_btn, "Надеть", b_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
                     else:
                         can = player_data["emeralds"] >= h_info["cost"]
-                        draw_mc_button(canvas, b_btn, "Купить", b_btn.collidepoint(mouse_pos) and can, can, font_pref=FONT_SMALL)
+                        draw_mc_button(screen, b_btn, "Купить", b_btn.collidepoint(mouse_pos) and can, can, font_pref=FONT_SMALL)
 
             elif workbench_tab == "VEHICLES":
                 for idx, w_info in enumerate(WORLDS):
                     row_rect, slot_rect, b_upg = get_shop_row_rects(idx, len(WORLDS))
-                    pygame.draw.rect(canvas, (220, 220, 220), row_rect)
-                    pygame.draw.rect(canvas, MC_GUI_DARK, row_rect, 1)
+                    pygame.draw.rect(screen, (220, 220, 220), row_rect)
+                    pygame.draw.rect(screen, MC_GUI_DARK, row_rect, 1)
 
-                    draw_mc_slot_frame(canvas, slot_rect.x, slot_rect.y, 50)
-                    draw_item_icon(canvas, f"veh_{w_info['vehicle_type']}", slot_rect.centerx, slot_rect.centery)
+                    draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
+                    draw_item_icon(screen, f"veh_{w_info['vehicle_type']}", slot_rect.centerx, slot_rect.centery)
 
-                    canvas.blit(FONT_MED.render(f"{w_info['v_name']} -> {w_info['upg_name']}", True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 10))
-                    canvas.blit(FONT_SMALL.render(f"Цена улучшения: {w_info['upg_cost']} изумрудов", True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
+                    screen.blit(FONT_MED.render(f"{w_info['v_name']} -> {w_info['upg_name']}", True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 10))
+                    screen.blit(FONT_SMALL.render(f"Цена улучшения: {w_info['upg_cost']} изумрудов", True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
 
                     is_upg = w_info["vehicle_type"] in player_data.get("upgraded_vehicles", [])
 
                     if is_upg:
-                        draw_mc_button(canvas, b_upg, "Готово!", False, False, font_pref=FONT_SMALL)
+                        draw_mc_button(screen, b_upg, "Готово!", False, False, font_pref=FONT_SMALL)
                     else:
                         can_u = player_data["emeralds"] >= w_info["upg_cost"]
-                        draw_mc_button(canvas, b_upg, "Прокачать", b_upg.collidepoint(mouse_pos) and can_u, can_u, font_pref=FONT_SMALL)
+                        draw_mc_button(screen, b_upg, "Прокачать", b_upg.collidepoint(mouse_pos) and can_u, can_u, font_pref=FONT_SMALL)
 
             elif workbench_tab == "ARTIFACTS":
                 for idx, (art_id, art_info) in enumerate(ARTIFACTS.items()):
                     row_rect, slot_rect, b_art = get_shop_row_rects(idx, len(ARTIFACTS))
-                    pygame.draw.rect(canvas, (225, 230, 240), row_rect)
-                    pygame.draw.rect(canvas, (70, 90, 140), row_rect, 2)
+                    pygame.draw.rect(screen, (225, 230, 240), row_rect)
+                    pygame.draw.rect(screen, (70, 90, 140), row_rect, 2)
 
-                    draw_mc_slot_frame(canvas, slot_rect.x, slot_rect.y, 50)
-                    draw_item_icon(canvas, art_id, slot_rect.centerx, slot_rect.centery)
+                    draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
+                    draw_item_icon(screen, art_id, slot_rect.centerx, slot_rect.centery)
 
-                    canvas.blit(FONT_BIG.render(art_info["name"], True, (30, 60, 140)), (slot_rect.right + 15, row_rect.y + 6))
-                    canvas.blit(FONT_SMALL.render(art_info["desc"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 28))
-                    canvas.blit(FONT_TINY.render(f"Цена: {art_info['cost']} изумрудов", True, (0, 130, 40)), (slot_rect.right + 15, row_rect.y + 44))
+                    screen.blit(FONT_BIG.render(art_info["name"], True, (30, 60, 140)), (slot_rect.right + 15, row_rect.y + 6))
+                    screen.blit(FONT_SMALL.render(art_info["desc"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 28))
+                    screen.blit(FONT_TINY.render(f"Цена: {art_info['cost']} изумрудов", True, (0, 130, 40)), (slot_rect.right + 15, row_rect.y + 44))
 
                     is_bought = art_id in player_data.get("artifacts", [])
 
                     if is_bought:
-                        draw_mc_button(canvas, b_art, "Активен!", False, False, font_pref=FONT_SMALL, custom_bg=(60, 140, 70))
+                        draw_mc_button(screen, b_art, "Активен!", False, False, font_pref=FONT_SMALL, custom_bg=(60, 140, 70))
                     else:
                         can_b = player_data["emeralds"] >= art_info["cost"]
-                        draw_mc_button(canvas, b_art, "Купить", b_art.collidepoint(mouse_pos) and can_b, can_b, font_pref=FONT_SMALL)
+                        draw_mc_button(screen, b_art, "Купить", b_art.collidepoint(mouse_pos) and can_b, can_b, font_pref=FONT_SMALL)
 
             elif workbench_tab == "POTIONS":
                 for idx, (pot_id, pot_info) in enumerate(POTIONS.items()):
                     row_rect, slot_rect, b_pot = get_shop_row_rects(idx, len(POTIONS))
-                    pygame.draw.rect(canvas, (245, 235, 250), row_rect)
-                    pygame.draw.rect(canvas, PURPLE, row_rect, 2)
+                    pygame.draw.rect(screen, (245, 235, 250), row_rect)
+                    pygame.draw.rect(screen, PURPLE, row_rect, 2)
 
-                    draw_mc_slot_frame(canvas, slot_rect.x, slot_rect.y, 50)
-                    draw_item_icon(canvas, pot_id, slot_rect.centerx, slot_rect.centery)
+                    draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
+                    draw_item_icon(screen, pot_id, slot_rect.centerx, slot_rect.centery)
 
                     cnt = player_data.get("totems", 0) if pot_id == "totem" else (1 if player_data.get("luck_timer", 0) > 0 else 0)
-                    canvas.blit(FONT_BIG.render(f"{pot_info['name']} (В наличии: {cnt} из {pot_info['max']})", True, PURPLE), (slot_rect.right + 15, row_rect.y + 6))
-                    canvas.blit(FONT_SMALL.render(pot_info["desc"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 28))
-                    canvas.blit(FONT_TINY.render(f"Цена: {pot_info['cost']} изумрудов", True, (0, 130, 40)), (slot_rect.right + 15, row_rect.y + 44))
+                    screen.blit(FONT_BIG.render(f"{pot_info['name']} (В наличии: {cnt} из {pot_info['max']})", True, PURPLE), (slot_rect.right + 15, row_rect.y + 6))
+                    screen.blit(FONT_SMALL.render(pot_info["desc"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 28))
+                    screen.blit(FONT_TINY.render(f"Цена: {pot_info['cost']} изумрудов", True, (0, 130, 40)), (slot_rect.right + 15, row_rect.y + 44))
 
                     is_full = cnt >= pot_info["max"]
 
                     if is_full:
-                        draw_mc_button(canvas, b_pot, "Максимум", False, False, font_pref=FONT_SMALL, custom_bg=(110, 110, 115))
+                        draw_mc_button(screen, b_pot, "Максимум", False, False, font_pref=FONT_SMALL, custom_bg=(110, 110, 115))
                     else:
                         can_buy = player_data["emeralds"] >= pot_info["cost"]
-                        draw_mc_button(canvas, b_pot, "Купить", b_pot.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL, custom_bg=(130, 60, 170))
+                        draw_mc_button(screen, b_pot, "Купить", b_pot.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL, custom_bg=(130, 60, 170))
 
-        screen.blit(canvas, (0, 0))
         pygame.display.flip()
         await asyncio.sleep(0)
         clock.tick(60)
