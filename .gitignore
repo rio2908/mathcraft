@@ -1,0 +1,8 @@
+/.venv/
+/.web-test-venv/
+/__pycache__/
+/build/
+/bin/
+/.buildozer/
+/mc_math_save.json
+/mc_last_player.txt
