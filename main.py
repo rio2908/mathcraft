@@ -12,7 +12,14 @@ pygame.init()
 pygame.font.init()
 
 WIDTH, HEIGHT = 1000, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+if "ANDROID_ARGUMENT" in os.environ:
+    screen = pygame.display.set_mode(
+        (WIDTH, HEIGHT),
+        pygame.FULLSCREEN | pygame.SCALED
+    )
+else:
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Майнкрафт: Марафон 50")
 clock = pygame.time.Clock()
 
