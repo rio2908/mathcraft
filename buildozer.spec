@@ -17,12 +17,12 @@ fullscreen = 1
 android.archs = arm64-v8a
 android.minapi = 24
 android.api = 34
-android.ndk = 26b
+android.ndk = 25b
 android.enable_androidx = True
 android.allow_backup = True
 
 p4a.bootstrap = sdl2
-p4a.branch = master
+p4a.branch = v2024.01.21
 
 [buildozer]
 log_level = 2
