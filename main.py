@@ -23,8 +23,11 @@ else:
 pygame.display.set_caption("Майнкрафт: Марафон 50")
 clock = pygame.time.Clock()
 
+FONT_SCALE = 1.2
+
 def get_safe_font(size):
-    return pygame.font.Font(None, size)
+    """Create a UI font enlarged for high-density phone screens."""
+    return pygame.font.Font(None, round(size * FONT_SCALE))
 
 FONT_TITLE = get_safe_font(28)
 FONT_BIG = get_safe_font(22)
