@@ -161,6 +161,53 @@ LOGIC_TASKS = {
     ],
 }
 
+HELP_PAGES = [
+    {
+        "title": "КАК НАЧАТЬ ИГРУ",
+        "lines": [
+            "Выбери Ксению (3 класс) или Настю (5 класс).",
+            "Пройди 5 миров и реши всего 50 примеров.",
+            "Нажимай на один из трёх ответов под примером.",
+            "В каждом новом марафоне задания и стражи меняются.",
+            "Золотое задание-сокровище приносит больше изумрудов.",
+            "Кнопка «Игроки» возвращает к выбору героя и статистике.",
+        ],
+    },
+    {
+        "title": "КАК ЗАРАБОТАТЬ ИЗУМРУДЫ",
+        "lines": [
+            "Правильный ответ: +1 изумруд.",
+            "Серия от 5 верных ответов: по +2 изумруда.",
+            "Задание-сокровище: ещё +2 изумруда.",
+            "Биом без ошибок: +5. Победа над стражем: +5.",
+            "Победа над Драконом: +50 изумрудов.",
+            "Новый рекорд времени: +10. Новый день подряд: +5.",
+        ],
+    },
+    {
+        "title": "МАГАЗИН И ПОМОЩНИКИ",
+        "lines": [
+            "Шлем защищает от усиления Дракона, но теряет прочность.",
+            "Артефакты уменьшают число ответов для победы в боях.",
+            "Тотем спасает от ошибки у стража или Дракона.",
+            "Зелье удачи удваивает награды следующих 10 примеров.",
+            "Волк снимает мобу 2 жизни, но убегает после 2 ошибок.",
+            "Транспорт можно улучшать — герой будет выглядеть круче.",
+        ],
+    },
+    {
+        "title": "ОСОБЫЕ ИСПЫТАНИЯ",
+        "lines": [
+            "Страж прячется в случайном месте каждого мира.",
+            "Ошибка у стража без тотема возвращает в начало биома.",
+            "Старец Фура даёт одну логическую загадку за марафон.",
+            "Верный ответ Старцу приносит бесплатный артефакт.",
+            "Дракон повторяет примеры, в которых были ошибки.",
+            "История хранит ошибки, время и рекорды каждого игрока.",
+        ],
+    },
+]
+
 MOB_POOLS = [
     [("creeper", "Крипер"), ("zombie", "Зомби"), ("spider", "Паук")],
     [("skeleton", "Скелет"), ("husk", "Кадавр"), ("cave_spider", "Пещерный паук")],
@@ -958,6 +1005,7 @@ STATS_PER_PAGE = 6
 history_page = 0
 history_selected_index = None
 HISTORY_PER_PAGE = 5
+help_page = 0
 
 workbench_tab = "HELMETS"
 
@@ -1137,6 +1185,10 @@ player_stats_buttons = {
     "Ксения": pygame.Rect(WIDTH // 2 + 55, 245, 150, 44),
     "Настя": pygame.Rect(WIDTH // 2 + 55, 330, 150, 44),
 }
+help_login_btn = pygame.Rect(WIDTH // 2 - 105, 465, 210, 46)
+help_prev_btn = pygame.Rect(190, 515, 150, 42)
+help_close_btn = pygame.Rect(WIDTH // 2 - 90, 515, 180, 42)
+help_next_btn = pygame.Rect(660, 515, 150, 42)
 
 mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
 boss_btn_finish = pygame.Rect(WIDTH // 2 - 150, 475, 300, 48)
@@ -1167,6 +1219,7 @@ async def main():
     global history_page, history_selected_index
     global sage_msg, sage_finished, sage_won, sage_reward_name
     global marathon_elapsed_seconds, timer_save_accumulator, boss_speed_bonus, boss_previous_time
+    global help_page
 
     running = True
 
@@ -1190,6 +1243,10 @@ async def main():
                 selected_for_play = None
                 selected_for_stats = None
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    if help_login_btn.collidepoint(mouse_pos):
+                        help_page = 0
+                        game_state = "HELP"
+                        continue
                     for profile_name in PLAYER_PROFILES:
                         if player_play_buttons[profile_name].collidepoint(mouse_pos):
                             selected_for_play = profile_name
@@ -1227,6 +1284,15 @@ async def main():
                     history_page = 0
                     history_selected_index = None
                     game_state = "HISTORY"
+
+            elif game_state == "HELP":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if help_close_btn.collidepoint(mouse_pos):
+                        game_state = "LOGIN"
+                    elif help_page > 0 and help_prev_btn.collidepoint(mouse_pos):
+                        help_page -= 1
+                    elif help_page < len(HELP_PAGES) - 1 and help_next_btn.collidepoint(mouse_pos):
+                        help_page += 1
 
             elif game_state == "GAME":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1814,6 +1880,50 @@ async def main():
                     player_stats_buttons[profile_name].collidepoint(mouse_pos),
                     custom_bg=(75, 105, 155)
                 )
+
+            draw_mc_button(
+                screen, help_login_btn, "Как играть?",
+                help_login_btn.collidepoint(mouse_pos),
+                font_pref=FONT_BIG, custom_bg=(125, 85, 155)
+            )
+
+        elif game_state == "HELP":
+            screen.fill((45, 55, 75))
+            help_card = pygame.Rect(100, 20, 800, 560)
+            pygame.draw.rect(screen, (225, 225, 220), help_card)
+            pygame.draw.rect(screen, (90, 65, 130), help_card, 4)
+
+            page = HELP_PAGES[help_page]
+            draw_emerald(screen, 155, 60, r=15)
+            help_title = FONT_TITLE.render(page["title"], True, (75, 50, 115))
+            screen.blit(help_title, (WIDTH // 2 - help_title.get_width() // 2, 43))
+            page_label = FONT_SMALL.render(
+                f"Страница {help_page + 1} из {len(HELP_PAGES)}",
+                True, (90, 90, 100)
+            )
+            screen.blit(page_label, (WIDTH // 2 - page_label.get_width() // 2, 78))
+
+            for line_idx, line in enumerate(page["lines"]):
+                row = pygame.Rect(145, 108 + line_idx * 61, 710, 50)
+                pygame.draw.rect(screen, (242, 242, 238) if line_idx % 2 == 0 else (232, 232, 228), row, border_radius=5)
+                pygame.draw.rect(screen, (155, 145, 165), row, 1, border_radius=5)
+                number_box = pygame.Rect(row.x + 8, row.y + 8, 34, 34)
+                pygame.draw.rect(screen, (105, 80, 145), number_box, border_radius=5)
+                number_text = FONT_MED.render(str(line_idx + 1), True, WHITE)
+                screen.blit(number_text, (number_box.centerx - number_text.get_width() // 2, number_box.centery - number_text.get_height() // 2))
+                line_font = FONT_MED if FONT_MED.size(line)[0] <= row.width - 60 else FONT_SMALL
+                line_text = line_font.render(line, True, DARK_TEXT)
+                screen.blit(line_text, (row.x + 52, row.centery - line_text.get_height() // 2))
+
+            if help_page > 0:
+                draw_mc_button(screen, help_prev_btn, "< Назад", help_prev_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(
+                screen, help_close_btn, "К игрокам",
+                help_close_btn.collidepoint(mouse_pos), font_pref=FONT_MED,
+                custom_bg=(75, 115, 155)
+            )
+            if help_page < len(HELP_PAGES) - 1:
+                draw_mc_button(screen, help_next_btn, "Дальше >", help_next_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         elif game_state == "GAME":
             screen.fill(cur_w["sky"])
