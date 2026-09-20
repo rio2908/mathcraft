@@ -129,6 +129,14 @@ POTIONS = {
     "luck": {"name": "Зелье Удачи", "desc": "Даёт удвоенные изумруды на следующие 10 примеров!", "cost": 100, "max": 1}
 }
 
+PETS = {
+    "wolf": {
+        "name": "Верный волк",
+        "desc": "В бою снимает 2 жизни. После двух ошибок убегает.",
+        "cost": 240,
+    }
+}
+
 PLAYER_PROFILES = {
     "Ксения": {"grade": 3, "difficulty": "easy"},
     "Настя": {"grade": 5, "difficulty": "hard"},
@@ -279,6 +287,9 @@ def get_player(name, apply_daily_bonus=True):
             "sage_task": create_sage_task(new_route),
             "sage_completed": False,
             "sage_artifact": None,
+            "pet": "none",
+            "pet_errors": 0,
+            "pets_lost": 0,
         }
     else:
         p = profiles[name]
@@ -315,6 +326,9 @@ def get_player(name, apply_daily_bonus=True):
             p["sage_task"] = create_sage_task(p["marathon_route"], p.get("task_num", 1))
         if "sage_completed" not in p: p["sage_completed"] = False
         if "sage_artifact" not in p: p["sage_artifact"] = None
+        if "pet" not in p: p["pet"] = "none"
+        if "pet_errors" not in p: p["pet_errors"] = 0
+        if "pets_lost" not in p: p["pets_lost"] = 0
         for helmet_id in p.get("unlocked_helmets", ["none"]):
             if helmet_id != "none" and helmet_id not in p["helmet_durability"]:
                 p["helmet_durability"][helmet_id] = HELMETS.get(helmet_id, {}).get("max_durability", 0)
@@ -353,6 +367,19 @@ def use_helmet_protection(profile):
         "maximum": helmet_info["max_durability"],
         "broken": broken,
     }
+
+def register_pet_error(profile):
+    pet_id = profile.get("pet", "none")
+    if pet_id == "none":
+        return None
+    errors = profile.get("pet_errors", 0) + 1
+    if errors >= 2:
+        profile["pet"] = "none"
+        profile["pet_errors"] = 0
+        profile["pets_lost"] = profile.get("pets_lost", 0) + 1
+        return {"ran_away": True, "pet_name": PETS.get(pet_id, {}).get("name", "Питомец")}
+    profile["pet_errors"] = errors
+    return {"ran_away": False, "pet_name": PETS.get(pet_id, {}).get("name", "Питомец"), "errors": errors}
 
 def make_math_task(ops_list):
     op = random.choice(ops_list)
@@ -503,6 +530,29 @@ def draw_mc_slot_frame(surf, x, y, size=50):
     pygame.draw.line(surf, WHITE, (rect.right - 2, rect.top), (rect.right - 2, rect.bottom - 1), 2)
     return rect
 
+def draw_pet_wolf(surf, cx, cy, anim_tick=0, small=False):
+    scale = 0.7 if small else 1.0
+    jump = int(abs(math.sin(anim_tick * 0.18)) * (5 if not small else 2))
+    cy -= jump
+    body_w, body_h = int(34 * scale), int(19 * scale)
+    head_size = int(20 * scale)
+    leg_w, leg_h = max(3, int(5 * scale)), max(5, int(10 * scale))
+    fur = (155, 160, 165)
+    light_fur = (205, 205, 200)
+    pygame.draw.rect(surf, fur, (cx - body_w // 2, cy - body_h // 2, body_w, body_h))
+    pygame.draw.rect(surf, light_fur, (cx + body_w // 2 - 4, cy - head_size // 2 - 5, head_size, head_size))
+    pygame.draw.polygon(surf, fur, [
+        (cx + body_w // 2 - 2, cy - head_size // 2 - 5),
+        (cx + body_w // 2 + 3, cy - head_size // 2 - 13),
+        (cx + body_w // 2 + 7, cy - head_size // 2 - 5),
+    ])
+    pygame.draw.rect(surf, (40, 40, 45), (cx + body_w // 2 + head_size - 7, cy - 4, 4, 4))
+    pygame.draw.rect(surf, (65, 65, 70), (cx + body_w // 2 + 5, cy - 8, 3, 3))
+    pygame.draw.rect(surf, (190, 40, 40), (cx + body_w // 2 - 3, cy + 3, head_size, 4))
+    pygame.draw.rect(surf, fur, (cx - body_w // 2 + 4, cy + body_h // 2 - 1, leg_w, leg_h))
+    pygame.draw.rect(surf, fur, (cx + body_w // 2 - 9, cy + body_h // 2 - 1, leg_w, leg_h))
+    pygame.draw.line(surf, fur, (cx - body_w // 2, cy - 3), (cx - body_w // 2 - int(12 * scale), cy - int(13 * scale)), max(2, int(4 * scale)))
+
 def draw_item_icon(surf, item_type, cx, cy):
     if item_type.startswith("helm_"):
         h_code = item_type.replace("helm_", "")
@@ -522,6 +572,8 @@ def draw_item_icon(surf, item_type, cx, cy):
                 pygame.draw.rect(surf, WHITE, (cx - 10, cy - 10, 4, 4))
             pygame.draw.rect(surf, (30, 30, 30), (cx - 15, cy - 14, 30, 29), 1)
 
+    elif item_type == "pet_wolf":
+        draw_pet_wolf(surf, cx - 2, cy + 2, small=True)
     elif item_type == "veh_pig":
         pygame.draw.rect(surf, (240, 145, 155), (cx - 14, cy - 12, 28, 24))
         pygame.draw.rect(surf, (225, 110, 125), (cx - 6, cy - 2, 12, 8))
@@ -891,6 +943,7 @@ sage_question = ""
 sage_answer = None
 sage_choices = []
 sage_msg = "Отгадай загадку с первой попытки!"
+sage_finished = False
 sage_won = False
 sage_reward_name = ""
 stats_page = 0
@@ -987,10 +1040,11 @@ def set_next_boss_task():
         boss_is_review = False
 
 def start_sage_encounter():
-    global game_state, sage_question, sage_answer, sage_choices, sage_msg, sage_won, sage_reward_name
+    global game_state, sage_question, sage_answer, sage_choices, sage_msg, sage_finished, sage_won, sage_reward_name
     game_state = "SAGE_CHALLENGE"
     sage_question, sage_answer, sage_choices = pick_logic_task(player_name)
-    sage_msg = "Одна попытка на загадку. Ошибёшься — получишь новую!"
+    sage_msg = "На загадку даётся только одна попытка!"
+    sage_finished = False
     sage_won = False
     sage_reward_name = ""
 
@@ -1068,10 +1122,11 @@ history_prev_btn = pygame.Rect(WIDTH // 2 - 150, 520, 110, 40)
 history_next_btn = pygame.Rect(WIDTH // 2 + 40, 520, 110, 40)
 history_detail_buttons = [pygame.Rect(720, 125 + i * 72, 120, 36) for i in range(HISTORY_PER_PAGE)]
 
-tab_helmets_rect = pygame.Rect(140, 55, 170, 36)
-tab_vehicles_rect = pygame.Rect(325, 55, 175, 36)
-tab_artifacts_rect = pygame.Rect(515, 55, 175, 36)
-tab_potions_rect = pygame.Rect(705, 55, 175, 36)
+tab_helmets_rect = pygame.Rect(120, 55, 145, 36)
+tab_vehicles_rect = pygame.Rect(275, 55, 145, 36)
+tab_artifacts_rect = pygame.Rect(430, 55, 145, 36)
+tab_potions_rect = pygame.Rect(585, 55, 145, 36)
+tab_pets_rect = pygame.Rect(740, 55, 145, 36)
 
 # ==================== ГЛАВНЫЙ ИГРОВОЙ ЦИКЛ ====================
 async def main():
@@ -1082,7 +1137,7 @@ async def main():
     global mob_battle_result_msg, mob_failed_reset, boss_streak
     global boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
     global history_page, history_selected_index
-    global sage_question, sage_answer, sage_choices, sage_msg, sage_won, sage_reward_name
+    global sage_msg, sage_finished, sage_won, sage_reward_name
 
     running = True
 
@@ -1231,6 +1286,7 @@ async def main():
                                     else:
                                         play_sound("wrong")
                                         p["boss_penalty_errors"] = p.get("boss_penalty_errors", 0) + 1
+                                    pet_error = register_pet_error(p)
                                     p.setdefault("marathon_error_details", []).append({
                                         "world": current_world_idx + 1,
                                         "task": task_num,
@@ -1257,6 +1313,9 @@ async def main():
                                     else:
                                         message = "Ой, крипер взорвал ответ! Дракон стал сильнее."
                                         message_color = RED
+                                    if pet_error and pet_error["ran_away"]:
+                                        message = f"{pet_error['pet_name']} убежал после второй ошибки!"
+                                        message_color = RED
                                     spawn_dust(hero_x, hero_y, color=(80, 80, 80))
 
             elif game_state == "CONFIRM_RESET":
@@ -1268,7 +1327,7 @@ async def main():
 
             elif game_state == "SAGE_CHALLENGE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if sage_won:
+                    if sage_finished:
                         if sage_continue_btn.collidepoint(mouse_pos):
                             game_state = "GAME"
                     else:
@@ -1292,15 +1351,23 @@ async def main():
                                     p["sage_completed"] = True
                                     save_data(all_data)
                                     player_data = p
+                                    sage_finished = True
                                     sage_won = True
                                     sage_msg = f"Верно! Награда: {sage_reward_name}"
                                     play_sound("victory")
                                 else:
-                                    previous_question = sage_question
-                                    sage_question, sage_answer, sage_choices = pick_logic_task(
-                                        player_name, previous_question
-                                    )
-                                    sage_msg = "Ответ неверный — эта загадка потеряна. Вот новая!"
+                                    all_data = load_data()
+                                    p = all_data[player_name.strip()]
+                                    pet_error = register_pet_error(p)
+                                    p["sage_completed"] = True
+                                    p["sage_artifact"] = None
+                                    save_data(all_data)
+                                    player_data = p
+                                    sage_finished = True
+                                    sage_won = False
+                                    sage_msg = "Старец уходит. В этом марафоне новой попытки не будет."
+                                    if pet_error and pet_error["ran_away"]:
+                                        sage_msg += f" {pet_error['pet_name']} тоже убежал!"
                                     play_sound("wrong")
                                 break
 
@@ -1345,16 +1412,20 @@ async def main():
                                         set_next_boss_task()
                                 else:
                                     play_sound("wrong")
+                                    pet_error = register_pet_error(p)
+                                    save_data(all_data)
+                                    player_data = p
+                                    pet_suffix = f" {pet_error['pet_name']} убежал!" if pet_error and pet_error["ran_away"] else ""
                                     if p.get("totems", 0) > 0:
                                         p["totems"] -= 1
                                         save_data(all_data)
                                         player_data = p
                                         spawn_hit_sparks(280, 185, is_shield=True)
-                                        boss_msg = f"Тотем спас от ошибки! Осталось тотемов: {p['totems']}"
+                                        boss_msg = f"Тотем спас от ошибки! Осталось тотемов: {p['totems']}.{pet_suffix}"
                                         set_next_boss_task()
                                     else:
                                         boss_streak = 0
-                                        boss_msg = f"ОШИБКА (было {boss_ans})! Серия ударов сброшена!"
+                                        boss_msg = f"ОШИБКА (было {boss_ans})! Серия сброшена.{pet_suffix}"
                                         spawn_dust(280, 190, color=(220, 50, 50))
                                         set_next_boss_task()
 
@@ -1440,30 +1511,43 @@ async def main():
 
                                 if mob_choices[i] == mob_ans:
                                     play_sound("hit")
-                                    mob_hp -= 1
+                                    pet_damage = 2 if p.get("pet", "none") != "none" else 1
+                                    mob_hp = max(0, mob_hp - pet_damage)
                                     sword_swing_timer = 12
                                     mob_flash_timer = 10
                                     spawn_hit_sparks(720, 160)
 
                                     if mob_hp == 0:
-                                        mob_battle_result_msg = "ПОБЕДА! Моб повержен! (+5 изумрудов!)"
+                                        mob_battle_result_msg = (
+                                            "ПОБЕДА! Волк помог: -2 жизни! (+5 изумрудов)"
+                                            if pet_damage == 2 else
+                                            "ПОБЕДА! Моб повержен! (+5 изумрудов!)"
+                                        )
                                     else:
-                                        mob_battle_result_msg = f"Точный удар! Осталось сердец: {mob_hp}"
+                                        mob_battle_result_msg = (
+                                            f"Волк атаковал! -2 жизни. Осталось: {mob_hp}"
+                                            if pet_damage == 2 else
+                                            f"Точный удар! Осталось сердец: {mob_hp}"
+                                        )
                                         route_ops = get_route_world(p, current_world_idx)["ops"]
                                         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
                                 else:
                                     play_sound("wrong")
+                                    pet_error = register_pet_error(p)
+                                    save_data(all_data)
+                                    player_data = p
+                                    pet_suffix = f" {pet_error['pet_name']} убежал!" if pet_error and pet_error["ran_away"] else ""
                                     if p.get("totems", 0) > 0:
                                         p["totems"] -= 1
                                         save_data(all_data)
                                         player_data = p
                                         spawn_hit_sparks(280, 185, is_shield=True)
-                                        mob_battle_result_msg = f"Тотем спас от сброса биома! (Осталось: {p['totems']})"
+                                        mob_battle_result_msg = f"Тотем спас от сброса! Осталось: {p['totems']}.{pet_suffix}"
                                         route_ops = get_route_world(p, current_world_idx)["ops"]
                                         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
                                     else:
                                         mob_failed_reset = True
-                                        mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!"
+                                        mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!{pet_suffix}"
                                         spawn_dust(280, 190, color=(220, 50, 50))
 
             elif game_state == "REVIEW":
@@ -1501,6 +1585,7 @@ async def main():
                     elif tab_vehicles_rect.collidepoint(mouse_pos): workbench_tab = "VEHICLES"
                     elif tab_artifacts_rect.collidepoint(mouse_pos): workbench_tab = "ARTIFACTS"
                     elif tab_potions_rect.collidepoint(mouse_pos): workbench_tab = "POTIONS"
+                    elif tab_pets_rect.collidepoint(mouse_pos): workbench_tab = "PETS"
 
                     all_data = load_data()
                     p = all_data[player_name.strip()]
@@ -1573,6 +1658,18 @@ async def main():
                                         play_sound("purchase")
                                         save_data(all_data)
                                         player_data = p
+
+                    elif workbench_tab == "PETS":
+                        for idx, (pet_id, pet_info) in enumerate(PETS.items()):
+                            _, _, b_pet = get_shop_row_rects(idx, len(PETS))
+                            if b_pet.collidepoint(mouse_pos):
+                                if p.get("pet", "none") == "none" and p["emeralds"] >= pet_info["cost"]:
+                                    p["emeralds"] -= pet_info["cost"]
+                                    p["pet"] = pet_id
+                                    p["pet_errors"] = 0
+                                    play_sound("purchase")
+                                    save_data(all_data)
+                                player_data = p
 
         if squash_val < 1.0:
             squash_val += 0.08
@@ -1704,6 +1801,9 @@ async def main():
             draw_steve_animated(screen, int(hero_x), int(hero_y), cur_v_type, is_upgraded, 
                                 helmet=player_data.get("helmet", "none"), 
                                 anim_tick=anim_tick, is_moving=is_moving, squash=squash_val, sword_swing=sword_swing_timer)
+            if player_data.get("pet", "none") == "wolf":
+                pet_x = int(hero_x - 48 if not is_moving else hero_x - 58)
+                draw_pet_wolf(screen, pet_x, int(hero_y + 23), anim_tick=anim_tick)
 
             for ft in floating_texts:
                 f_surf = FONT_BIG.render(ft[0], True, ft[3])
@@ -1716,19 +1816,21 @@ async def main():
             errors_cnt = player_data.get("marathon_errors", 0)
             equipped_helmet = player_data.get("helmet", "none")
             helmet_durability = player_data.get("helmet_durability", {}).get(equipped_helmet, 0)
+            pet_errors = player_data.get("pet_errors", 0)
             totem_info = f" | Т: {totems_cnt}" if totems_cnt > 0 else ""
             luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 else ""
             errors_info = f" | О: {errors_cnt}" if errors_cnt > 0 else ""
             helmet_info = f" | Ш: {helmet_durability}" if equipped_helmet != "none" else ""
+            pet_info = f" | Волк: {pet_errors}/2" if player_data.get("pet", "none") != "none" else ""
 
-            bar_box = pygame.Rect(15, 10, 360, 34)
+            bar_box = pygame.Rect(15, 10, 460, 34)
             pygame.draw.rect(screen, MC_GUI_BG, bar_box)
             pygame.draw.rect(screen, MC_GUI_LIGHT, (bar_box.left, bar_box.top, bar_box.width, 2))
             pygame.draw.rect(screen, MC_GUI_DARK, (bar_box.left, bar_box.bottom - 2, bar_box.width, 2))
             pygame.draw.rect(screen, MC_GUI_BLACK, bar_box, 2)
 
             draw_emerald(screen, 32, 27, r=8)
-            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{helmet_info}{errors_info} | {player_name}"
+            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{helmet_info}{pet_info}{errors_info} | {player_name}"
             info_font = FONT_MED if FONT_MED.size(info_label)[0] <= bar_box.width - 40 else FONT_SMALL
             info_txt = info_font.render(info_label, True, DARK_TEXT)
             screen.blit(info_txt, (46, 17))
@@ -1796,7 +1898,7 @@ async def main():
 
             t_r1 = FONT_TITLE.render("Сбросить марафон сначала?", True, RED)
             t_r2 = FONT_MED.render("Ты вернёшься на 1-й пример 1-го мира.", True, DARK_TEXT)
-            t_r3 = FONT_SMALL.render("(Твои изумруды, шлемы, тотемы СОХРАНЯТСЯ)", True, (40, 140, 40))
+            t_r3 = FONT_SMALL.render("(Изумруды, экипировка, тотемы и питомец СОХРАНЯТСЯ)", True, (40, 140, 40))
 
             screen.blit(t_r1, (WIDTH // 2 - t_r1.get_width() // 2, 190))
             screen.blit(t_r2, (WIDTH // 2 - t_r2.get_width() // 2, 235))
@@ -1822,6 +1924,8 @@ async def main():
             draw_steve_animated(screen, 280, 175, cur_v_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
+            if player_data.get("pet", "none") == "wolf":
+                draw_pet_wolf(screen, 220, 205, anim_tick=anim_tick)
 
             vs_box = pygame.Rect(WIDTH // 2 - 24, 150, 48, 32)
             pygame.draw.rect(screen, (220, 60, 60), vs_box, border_radius=6)
@@ -1886,7 +1990,7 @@ async def main():
             screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 48))
             draw_sage_fouras(screen, WIDTH // 2, 155, anim_tick)
 
-            if not sage_won:
+            if not sage_finished:
                 draw_centered_wrapped_text(
                     screen, sage_question, FONT_BIG, DARK_TEXT,
                     WIDTH // 2, 225, 520, 5
@@ -1902,18 +2006,27 @@ async def main():
                 )
             else:
                 reward_box = pygame.Rect(WIDTH // 2 - 250, 245, 500, 150)
-                pygame.draw.rect(screen, (245, 235, 190), reward_box, border_radius=8)
-                pygame.draw.rect(screen, MC_GOLD, reward_box, 3, border_radius=8)
-                reward_title = FONT_TITLE.render("ЗАГАДКА РАЗГАДАНА!", True, GREEN)
+                box_color = (245, 235, 190) if sage_won else (235, 220, 220)
+                border_color = MC_GOLD if sage_won else RED
+                pygame.draw.rect(screen, box_color, reward_box, border_radius=8)
+                pygame.draw.rect(screen, border_color, reward_box, 3, border_radius=8)
+                result_title = "ЗАГАДКА РАЗГАДАНА!" if sage_won else "ОТВЕТ НЕВЕРНЫЙ"
+                reward_title = FONT_TITLE.render(result_title, True, GREEN if sage_won else RED)
                 screen.blit(reward_title, (WIDTH // 2 - reward_title.get_width() // 2, 270))
+                result_text = (
+                    f"Старец вручает тебе: {sage_reward_name}"
+                    if sage_won else
+                    sage_msg
+                )
                 draw_centered_wrapped_text(
-                    screen, f"Старец вручает тебе: {sage_reward_name}", FONT_BIG,
+                    screen, result_text, FONT_BIG,
                     (85, 60, 25), WIDTH // 2, 320, 450
                 )
                 draw_mc_button(
-                    screen, sage_continue_btn, "Забрать артефакт и продолжить",
+                    screen, sage_continue_btn,
+                    "Забрать артефакт и продолжить" if sage_won else "Продолжить путь",
                     sage_continue_btn.collidepoint(mouse_pos), font_pref=FONT_MED,
-                    custom_bg=(65, 145, 75)
+                    custom_bg=(65, 145, 75) if sage_won else (105, 105, 120)
                 )
 
         elif game_state == "BOSS_BATTLE":
@@ -1936,6 +2049,8 @@ async def main():
             draw_steve_animated(screen, 280, 185, "dragon", True,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
+            if player_data.get("pet", "none") == "wolf":
+                draw_pet_wolf(screen, 220, 215, anim_tick=anim_tick)
             
             if boss_max_hp <= 10:
                 hearts_start_x = 720 - (boss_max_hp * 26) // 2 + 13
@@ -2221,6 +2336,8 @@ async def main():
                            custom_bg=(170, 170, 175) if workbench_tab == "ARTIFACTS" else (90, 90, 95))
             draw_mc_button(screen, tab_potions_rect, "Зелья и Тотемы", tab_potions_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "POTIONS" else (90, 90, 95))
+            draw_mc_button(screen, tab_pets_rect, "Питомцы", tab_pets_rect.collidepoint(mouse_pos),
+                           custom_bg=(170, 170, 175) if workbench_tab == "PETS" else (90, 90, 95))
 
             pygame.draw.rect(screen, MC_GUI_BG, content_box)
             pygame.draw.rect(screen, MC_GUI_BLACK, content_box, 3)
@@ -2326,6 +2443,32 @@ async def main():
                     else:
                         can_buy = player_data["emeralds"] >= pot_info["cost"]
                         draw_mc_button(screen, b_pot, "Купить", b_pot.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL, custom_bg=(130, 60, 170))
+
+            elif workbench_tab == "PETS":
+                for idx, (pet_id, pet_info) in enumerate(PETS.items()):
+                    row_rect, slot_rect, b_pet = get_shop_row_rects(idx, len(PETS))
+                    pygame.draw.rect(screen, (232, 230, 220), row_rect)
+                    pygame.draw.rect(screen, (125, 95, 70), row_rect, 2)
+
+                    draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
+                    draw_item_icon(screen, f"pet_{pet_id}", slot_rect.centerx, slot_rect.centery)
+
+                    is_active = player_data.get("pet", "none") == pet_id
+                    pet_errors = player_data.get("pet_errors", 0) if is_active else 0
+                    screen.blit(FONT_BIG.render(pet_info["name"], True, (90, 65, 40)), (slot_rect.right + 15, row_rect.y + 6))
+                    screen.blit(FONT_SMALL.render(pet_info["desc"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 28))
+                    status_text = (
+                        f"С вами · ошибок: {pet_errors} из 2"
+                        if is_active else
+                        f"Цена: {pet_info['cost']} изумрудов"
+                    )
+                    screen.blit(FONT_TINY.render(status_text, True, (0, 130, 40) if is_active else (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 44))
+
+                    if is_active:
+                        draw_mc_button(screen, b_pet, "Рядом", False, False, font_pref=FONT_SMALL, custom_bg=(70, 140, 80))
+                    else:
+                        can_buy = player_data["emeralds"] >= pet_info["cost"]
+                        draw_mc_button(screen, b_pet, "Купить", b_pet.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL)
 
         pygame.display.flip()
         await asyncio.sleep(0)
