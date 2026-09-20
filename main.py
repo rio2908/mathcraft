@@ -5,6 +5,7 @@ import math
 import json
 import os
 import asyncio
+from array import array
 from datetime import date, datetime
 
 # Инициализация
@@ -23,7 +24,7 @@ else:
 pygame.display.set_caption("Майнкрафт: Марафон 50")
 clock = pygame.time.Clock()
 
-FONT_SCALE = 1.2
+FONT_SCALE = 1.35
 
 def get_safe_font(size):
     """Create a UI font enlarged for high-density phone screens."""
@@ -34,6 +35,54 @@ FONT_BIG = get_safe_font(22)
 FONT_MED = get_safe_font(18)
 FONT_SMALL = get_safe_font(15)
 FONT_TINY = get_safe_font(12)
+
+sound_enabled = True
+audio_attempted = False
+game_sounds = {}
+
+def ensure_audio():
+    """Initialize audio after a user gesture (required by browsers and Android)."""
+    global audio_attempted, game_sounds
+    if audio_attempted:
+        return
+    audio_attempted = True
+    try:
+        if pygame.mixer.get_init() is None:
+            pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
+
+        sample_rate, sample_format, channels = pygame.mixer.get_init()
+        if sample_format != -16:
+            return
+
+        def make_tone(frequency, duration_ms, volume=0.18):
+            sample_count = int(sample_rate * duration_ms / 1000)
+            fade_samples = max(1, int(sample_rate * 0.015))
+            samples = array("h")
+            for i in range(sample_count):
+                fade_in = min(1.0, i / fade_samples)
+                fade_out = min(1.0, (sample_count - i) / fade_samples)
+                envelope = min(fade_in, fade_out)
+                value = int(32767 * volume * envelope * math.sin(2 * math.pi * frequency * i / sample_rate))
+                for _ in range(channels):
+                    samples.append(value)
+            return pygame.mixer.Sound(buffer=samples.tobytes())
+
+        game_sounds = {
+            "correct": make_tone(660, 110),
+            "wrong": make_tone(180, 180),
+            "hit": make_tone(440, 90, 0.22),
+            "purchase": make_tone(880, 140),
+            "victory": make_tone(990, 320, 0.22),
+        }
+    except (pygame.error, ValueError):
+        game_sounds = {}
+
+def play_sound(name):
+    if sound_enabled:
+        ensure_audio()
+        sound = game_sounds.get(name)
+        if sound:
+            sound.play()
 
 # Палитра Minecraft
 MC_GUI_BG = (198, 198, 198)
@@ -53,46 +102,40 @@ GREEN = (35, 175, 60)
 PURPLE = (180, 50, 240)
 
 WORLDS = [
-    {"name": "1. Равнины Обычного Мира", "sky": (140, 205, 255), "ground": (85, 140, 50), "plat": (115, 80, 50), "top_plat": (105, 175, 55), "dark_text": True, "ops": ["+", "-"], "vehicle_type": "pig", "v_name": "Свинка", "upg_name": "Бронированная свинка", "upg_cost": 15, "mob_id": "creeper", "mob_name": "Крипер"},
-    {"name": "2. Жаркая Пустыня", "sky": (245, 215, 160), "ground": (210, 165, 85), "plat": (180, 130, 60), "top_plat": (225, 185, 100), "dark_text": True, "ops": ["-", "+"], "vehicle_type": "llama", "v_name": "Лама", "upg_name": "Боевая Лама в попоне", "upg_cost": 20, "mob_id": "skeleton", "mob_name": "Скелет с луком"},
-    {"name": "3. Ледяные Равнины", "sky": (195, 225, 245), "ground": (220, 235, 245), "plat": (140, 190, 230), "top_plat": (175, 220, 255), "dark_text": True, "ops": ["*"], "vehicle_type": "boat", "v_name": "Лодка на льду", "upg_name": "Лодка с сундуком", "upg_cost": 25, "mob_id": "stray", "mob_name": "Зимогор"},
-    {"name": "4. Незер (Нижний Мир)", "sky": (65, 15, 15), "ground": (90, 20, 20), "plat": (50, 10, 10), "top_plat": (240, 90, 20), "dark_text": False, "ops": ["/"], "vehicle_type": "strider", "v_name": "Страйдер по лаве", "upg_name": "Страйдер в седле", "upg_cost": 30, "mob_id": "blaze", "mob_name": "Ифрит Незера"},
-    {"name": "5. Эндер Мир (Край)", "sky": (15, 10, 25), "ground": (30, 25, 45), "plat": (50, 45, 70), "top_plat": (230, 230, 175), "dark_text": False, "ops": ["+", "-", "*", "/"], "vehicle_type": "dragon", "v_name": "Элитры", "upg_name": "Дракон Края", "upg_cost": 40, "mob_id": "enderman", "mob_name": "Эндермен"}
+    {"name": "1. Равнины Обычного Мира", "sky": (140, 205, 255), "ground": (85, 140, 50), "plat": (115, 80, 50), "top_plat": (105, 175, 55), "dark_text": True, "ops": ["+", "-"], "vehicle_type": "pig", "v_name": "Свинка", "upg_name": "Бронированная свинка", "upg_cost": 70, "mob_id": "creeper", "mob_name": "Крипер"},
+    {"name": "2. Жаркая Пустыня", "sky": (245, 215, 160), "ground": (210, 165, 85), "plat": (180, 130, 60), "top_plat": (225, 185, 100), "dark_text": True, "ops": ["-", "+"], "vehicle_type": "llama", "v_name": "Лама", "upg_name": "Боевая Лама в попоне", "upg_cost": 110, "mob_id": "skeleton", "mob_name": "Скелет с луком"},
+    {"name": "3. Ледяные Равнины", "sky": (195, 225, 245), "ground": (220, 235, 245), "plat": (140, 190, 230), "top_plat": (175, 220, 255), "dark_text": True, "ops": ["*"], "vehicle_type": "boat", "v_name": "Лодка на льду", "upg_name": "Лодка с сундуком", "upg_cost": 160, "mob_id": "stray", "mob_name": "Зимогор"},
+    {"name": "4. Незер (Нижний Мир)", "sky": (65, 15, 15), "ground": (90, 20, 20), "plat": (50, 10, 10), "top_plat": (240, 90, 20), "dark_text": False, "ops": ["/"], "vehicle_type": "strider", "v_name": "Страйдер по лаве", "upg_name": "Страйдер в седле", "upg_cost": 220, "mob_id": "blaze", "mob_name": "Ифрит Незера"},
+    {"name": "5. Эндер Мир (Край)", "sky": (15, 10, 25), "ground": (30, 25, 45), "plat": (50, 45, 70), "top_plat": (230, 230, 175), "dark_text": False, "ops": ["+", "-", "*", "/"], "vehicle_type": "dragon", "v_name": "Элитры", "upg_name": "Дракон Края", "upg_cost": 300, "mob_id": "enderman", "mob_name": "Эндермен"}
 ]
 
 HELMETS = {
     "none": {"name": "Без шлема", "cost": 0},
-    "leather": {"name": "Кожаный шлем", "cost": 10, "color": (160, 90, 45)},
-    "iron": {"name": "Железный шлем", "cost": 15, "color": (210, 210, 215)},
-    "diamond": {"name": "Алмазный шлем", "cost": 25, "color": (45, 225, 220)},
-    "netherite": {"name": "Незеритовый шлем", "cost": 35, "color": (65, 55, 65)}
+    "leather": {"name": "Кожаный шлем", "cost": 50, "color": (160, 90, 45)},
+    "iron": {"name": "Железный шлем", "cost": 100, "color": (210, 210, 215)},
+    "diamond": {"name": "Алмазный шлем", "cost": 180, "color": (45, 225, 220)},
+    "netherite": {"name": "Незеритовый шлем", "cost": 300, "color": (65, 55, 65)}
 }
 
 ARTIFACTS = {
-    "sharp_sword": {"name": "Меч «Острота»", "desc": "Мобы биомов: нужно всего 2 примера!", "cost": 20},
-    "strength_potion": {"name": "Зелье Силы II", "desc": "Мобы биомов: победа с 1 примера (ваншот)!", "cost": 35},
-    "dragon_bow": {"name": "Лук Силы", "desc": "Дракон Края: нужно 4 примера (вместо 5)!", "cost": 30},
-    "end_crystal": {"name": "Кристалл Края", "desc": "Дракон Края: нужно всего 3 примера!", "cost": 45}
+    "sharp_sword": {"name": "Меч «Острота»", "desc": "Мобы биомов: нужно всего 2 примера!", "cost": 150},
+    "strength_potion": {"name": "Зелье Силы II", "desc": "Мобы биомов: победа с 1 примера (ваншот)!", "cost": 250},
+    "dragon_bow": {"name": "Лук Силы", "desc": "Дракон Края: нужно 4 примера (вместо 5)!", "cost": 220},
+    "end_crystal": {"name": "Кристалл Края", "desc": "Дракон Края: нужно всего 3 примера!", "cost": 350}
 }
 
 POTIONS = {
-    "totem": {"name": "Тотем Бессмертия", "desc": "Спасает от 1 ошибки в бою со стражем или Драконом!", "cost": 15, "max": 3},
-    "luck": {"name": "Зелье Удачи", "desc": "Даёт удвоенные изумруды на следующие 10 примеров!", "cost": 20, "max": 1}
+    "totem": {"name": "Тотем Бессмертия", "desc": "Спасает от 1 ошибки в бою со стражем или Драконом!", "cost": 75, "max": 3},
+    "luck": {"name": "Зелье Удачи", "desc": "Даёт удвоенные изумруды на следующие 10 примеров!", "cost": 100, "max": 1}
+}
+
+PLAYER_PROFILES = {
+    "Ксения": {"grade": 3, "difficulty": "easy"},
+    "Настя": {"grade": 5, "difficulty": "hard"},
 }
 
 SAVE_FILE = "mc_math_save.json"
 LAST_PLAYER_FILE = "mc_last_player.txt"
-
-def prompt_mobile_keyboard(current_name=""):
-    if sys.platform == "emscripten":
-        try:
-            import platform
-            res = platform.window.prompt("Введи ник игрока:", current_name or "Стив")
-            if res:
-                return str(res).strip()[:14]
-        except Exception:
-            pass
-    return None
 
 def request_browser_fullscreen():
     if sys.platform == "emscripten":
@@ -137,7 +180,7 @@ def set_last_player(name):
     except Exception:
         pass
 
-def get_player(name):
+def get_player(name, apply_daily_bonus=True):
     profiles = load_data()
     name = name.strip()
     today_str = date.today().isoformat()
@@ -145,24 +188,31 @@ def get_player(name):
         profiles[name] = {
             "emeralds": 10, "streak": 1, "last_date": today_str,
             "task_num": 1, "helmet": "none", "unlocked_helmets": ["none"],
-            "upgraded_vehicles": [], "artifacts": [], "totems": 1, "luck_timer": 0
+            "upgraded_vehicles": [], "artifacts": [], "totems": 1, "luck_timer": 0,
+            "marathon_errors": 0, "marathon_error_details": [], "sound_enabled": True,
+            "game_history": []
         }
     else:
         p = profiles[name]
-        last_d = datetime.fromisoformat(p.get("last_date", today_str)).date()
-        diff = (date.today() - last_d).days
-        if diff == 1:
-            p["streak"] += 1
-            p["emeralds"] += 5
-            p["last_date"] = today_str
-        elif diff > 1:
-            p["streak"] = 1
-            p["last_date"] = today_str
+        if apply_daily_bonus:
+            last_d = datetime.fromisoformat(p.get("last_date", today_str)).date()
+            diff = (date.today() - last_d).days
+            if diff == 1:
+                p["streak"] += 1
+                p["emeralds"] += 5
+                p["last_date"] = today_str
+            elif diff > 1:
+                p["streak"] = 1
+                p["last_date"] = today_str
         if "task_num" not in p: p["task_num"] = 1
         if "upgraded_vehicles" not in p: p["upgraded_vehicles"] = []
         if "artifacts" not in p: p["artifacts"] = []
         if "totems" not in p: p["totems"] = 1
         if "luck_timer" not in p: p["luck_timer"] = 0
+        if "marathon_errors" not in p: p["marathon_errors"] = 0
+        if "marathon_error_details" not in p: p["marathon_error_details"] = []
+        if "sound_enabled" not in p: p["sound_enabled"] = True
+        if "game_history" not in p: p["game_history"] = []
 
     save_data(profiles)
     set_last_player(name)
@@ -170,25 +220,34 @@ def get_player(name):
 
 def make_math_task(ops_list):
     op = random.choice(ops_list)
+    is_hard = PLAYER_PROFILES.get(globals().get("player_name"), {}).get("difficulty") == "hard"
+    max_answer = 100 if is_hard else 20
+
     if op == "+":
-        ans = random.randint(5, 20)
-        a = random.randint(2, ans - 2)
+        ans = random.randint(20, max_answer) if is_hard else random.randint(5, max_answer)
+        a = random.randint(5 if is_hard else 2, ans - (5 if is_hard else 2))
         b = ans - a
         sym = "+"
     elif op == "-":
-        a = random.randint(6, 20)
-        b = random.randint(2, a - 2)
+        a = random.randint(20, max_answer) if is_hard else random.randint(6, max_answer)
+        b = random.randint(5 if is_hard else 2, a - (5 if is_hard else 2))
         ans = a - b
         sym = "-"
     elif op == "*":
-        pairs = [(x, y) for x in range(2, 11) for y in range(2, 11) if x * y <= 20]
+        pairs = [
+            (x, y)
+            for x in range(2, 11)
+            for y in range(2, 11)
+            if is_hard or x * y <= 20
+        ]
         a, b = random.choice(pairs)
         ans = a * b
         sym = "x"
     else:
         div_pairs = []
         for d in range(2, 11):
-            for res in range(2, (20 // d) + 1):
+            max_result = 10 if is_hard else (20 // d)
+            for res in range(2, max_result + 1):
                 div_pairs.append((d * res, d, res))
         a, b, ans = random.choice(div_pairs)
         sym = ":"
@@ -196,7 +255,7 @@ def make_math_task(ops_list):
     variants = {ans}
     while len(variants) < 3:
         fake = ans + random.choice([-3, -2, -1, 1, 2, 3])
-        if 1 <= fake <= 20 and fake != ans:
+        if 1 <= fake <= max_answer and fake != ans:
             variants.add(fake)
             
     v_list = list(variants)
@@ -515,15 +574,11 @@ STEPS_PER_WORLD = 10
 base_y = 490
 platforms = [(95 + i * ((WIDTH - 190) // STEPS_PER_WORLD), base_y) for i in range(STEPS_PER_WORLD + 1)]
 
-last_saved_name = get_last_player()
-if last_saved_name:
-    player_name = last_saved_name
-    player_data = get_player(player_name)
-    game_state = "GAME"
-else:
-    player_name = ""
-    player_data = None
-    game_state = "LOGIN"
+last_player_name = get_last_player()
+player_name = last_player_name if last_player_name in PLAYER_PROFILES else "Ксения"
+player_data = get_player(player_name, apply_daily_bonus=False)
+sound_enabled = player_data.get("sound_enabled", True)
+game_state = "LOGIN"
 
 task_num = player_data.get("task_num", 1) if player_data else 1
 combo_count = 0
@@ -566,6 +621,11 @@ boss_op = "+"
 boss_clean_expr = ""
 boss_msg = "Победи Дракона!"
 boss_won = False
+stats_page = 0
+STATS_PER_PAGE = 6
+history_page = 0
+history_selected_index = None
+HISTORY_PER_PAGE = 5
 
 workbench_tab = "HELMETS"
 
@@ -609,10 +669,12 @@ def get_mob_max_hp():
 def get_boss_max_hp():
     arts = player_data.get("artifacts", []) if player_data else []
     if "end_crystal" in arts:
-        return 3
-    if "dragon_bow" in arts:
-        return 4
-    return 5
+        base_hp = 3
+    elif "dragon_bow" in arts:
+        base_hp = 4
+    else:
+        base_hp = 5
+    return base_hp + (player_data.get("marathon_errors", 0) if player_data else 0)
 
 def start_mob_encounter():
     global game_state, mob_hp, mob_max_hp, mob_task_str, mob_ans, mob_choices, mob_clean_expr, mob_op
@@ -633,12 +695,14 @@ def start_boss_battle():
     boss_max_hp = get_boss_max_hp()
     boss_streak = 0
     boss_won = False
-    boss_msg = f"Реши {boss_max_hp} примеров подряд, чтобы одолеть Дракона!"
+    error_penalty = player_data.get("marathon_errors", 0) if player_data else 0
+    boss_msg = f"Нужно {boss_max_hp} верных ответов подряд (ошибки марафона: +{error_penalty})!"
     boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
 
 def reset_entire_marathon():
     global task_num, step_in_world, current_world_idx, hero_x, hero_y, target_x, target_y, is_moving
     global ten_errors, question_str, correct_ans, choices, current_op, clean_expr, game_state, message, message_color
+    global player_data
 
     task_num = 1
     step_in_world = 0
@@ -653,7 +717,10 @@ def reset_entire_marathon():
     if player_name.strip() in all_data:
         p = all_data[player_name.strip()]
         p["task_num"] = 1
+        p["marathon_errors"] = 0
+        p["marathon_error_details"] = []
         save_data(all_data)
+        player_data = p
 
     question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[0]["ops"])
     message = "Марафон начат сначала! Вперёд!"
@@ -667,23 +734,35 @@ answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 235, btn_w, btn_h)
 mob_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
 boss_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
 
-nav_workbench = pygame.Rect(WIDTH - 430, 10, 110, 34)
-nav_switch_player = pygame.Rect(WIDTH - 310, 10, 110, 34)
-nav_reset_game = pygame.Rect(WIDTH - 190, 10, 85, 34)
-nav_fullscreen = pygame.Rect(WIDTH - 95, 10, 80, 34)
+nav_workbench = pygame.Rect(WIDTH - 505, 10, 105, 34)
+nav_players = pygame.Rect(WIDTH - 395, 10, 85, 34)
+nav_sound = pygame.Rect(WIDTH - 305, 10, 90, 34)
+nav_reset_game = pygame.Rect(WIDTH - 210, 10, 90, 34)
+nav_fullscreen = pygame.Rect(WIDTH - 105, 10, 90, 34)
 
 confirm_reset_yes = pygame.Rect(WIDTH // 2 - 130, 310, 110, 42)
 confirm_reset_no = pygame.Rect(WIDTH // 2 + 20, 310, 110, 42)
 
-btn_nick_keyboard = pygame.Rect(WIDTH//2 - 150, 245, 300, 40)
-btn_nick_steve = pygame.Rect(WIDTH//2 - 150, 295, 95, 36)
-btn_nick_alex = pygame.Rect(WIDTH//2 - 47, 295, 95, 36)
-btn_nick_hero = pygame.Rect(WIDTH//2 + 55, 295, 95, 36)
+player_play_buttons = {
+    "Ксения": pygame.Rect(WIDTH // 2 - 105, 245, 150, 44),
+    "Настя": pygame.Rect(WIDTH // 2 - 105, 330, 150, 44),
+}
+player_stats_buttons = {
+    "Ксения": pygame.Rect(WIDTH // 2 + 55, 245, 150, 44),
+    "Настя": pygame.Rect(WIDTH // 2 + 55, 330, 150, 44),
+}
 
 mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
 boss_btn_finish = pygame.Rect(WIDTH // 2 - 150, 475, 300, 48)
 review_btn_continue = pygame.Rect(WIDTH // 2 - 160, 500, 320, 48)
 final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 385, 280, 46)
+stats_prev_btn = pygame.Rect(WIDTH // 2 - 250, 500, 120, 42)
+stats_next_btn = pygame.Rect(WIDTH // 2 + 130, 500, 120, 42)
+stats_restart_btn = pygame.Rect(WIDTH // 2 - 120, 500, 240, 42)
+history_back_btn = pygame.Rect(145, 520, 130, 40)
+history_prev_btn = pygame.Rect(WIDTH // 2 - 150, 520, 110, 40)
+history_next_btn = pygame.Rect(WIDTH // 2 + 40, 520, 110, 40)
+history_detail_buttons = [pygame.Rect(720, 125 + i * 72, 120, 36) for i in range(HISTORY_PER_PAGE)]
 
 tab_helmets_rect = pygame.Rect(140, 55, 170, 36)
 tab_vehicles_rect = pygame.Rect(325, 55, 175, 36)
@@ -697,7 +776,8 @@ async def main():
     global sword_swing_timer, mob_flash_timer, ten_errors, question_str, correct_ans, choices, current_op, clean_expr
     global message, message_color, mob_hp, mob_task_str, mob_ans, mob_choices, mob_clean_expr, mob_op
     global mob_battle_result_msg, mob_failed_reset, boss_streak, boss_task_str, boss_ans, boss_choices
-    global boss_op, boss_clean_expr, boss_msg, boss_won, workbench_tab
+    global boss_op, boss_clean_expr, boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
+    global history_page, history_selected_index
 
     running = True
 
@@ -711,49 +791,42 @@ async def main():
         for event in pygame.event.get():
             if event.type == pygame.MOUSEBUTTONDOWN and hasattr(event, "pos"):
                 mouse_pos = event.pos
+                ensure_audio()
 
             if event.type == pygame.QUIT:
                 running = False
 
             elif game_state == "LOGIN":
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_BACKSPACE:
-                        player_name = player_name[:-1]
-                    elif event.key == pygame.K_RETURN and player_name.strip():
-                        player_data = get_player(player_name)
-                        task_num = player_data.get("task_num", 1)
-                        current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
-                        step_in_world = (task_num - 1) % STEPS_PER_WORLD
-                        hero_x = float(platforms[step_in_world][0])
-                        hero_y = float(platforms[step_in_world][1] - 24)
-                        target_x, target_y = hero_x, hero_y
-                        ten_errors = []
-                        question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
-                        game_state = "GAME"
-                elif event.type == pygame.TEXTINPUT:
-                    if len(player_name) < 14:
-                        player_name += event.text
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if btn_nick_keyboard.collidepoint(mouse_pos):
-                        nick = prompt_mobile_keyboard(player_name)
-                        if nick: player_name = nick
-                    elif btn_nick_steve.collidepoint(mouse_pos): player_name = "Стив"
-                    elif btn_nick_alex.collidepoint(mouse_pos): player_name = "Алекс"
-                    elif btn_nick_hero.collidepoint(mouse_pos): player_name = "Герой"
+                selected_for_play = None
+                selected_for_stats = None
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    for profile_name in PLAYER_PROFILES:
+                        if player_play_buttons[profile_name].collidepoint(mouse_pos):
+                            selected_for_play = profile_name
+                        elif player_stats_buttons[profile_name].collidepoint(mouse_pos):
+                            selected_for_stats = profile_name
 
-                    btn_start = pygame.Rect(WIDTH//2 - 100, 345, 200, 46)
-                    if btn_start.collidepoint(mouse_pos) and player_name.strip():
-                        request_browser_fullscreen()
-                        player_data = get_player(player_name)
-                        task_num = player_data.get("task_num", 1)
-                        current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
-                        step_in_world = (task_num - 1) % STEPS_PER_WORLD
-                        hero_x = float(platforms[step_in_world][0])
-                        hero_y = float(platforms[step_in_world][1] - 24)
-                        target_x, target_y = hero_x, hero_y
-                        ten_errors = []
-                        question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
-                        game_state = "GAME"
+                if selected_for_play:
+                    player_name = selected_for_play
+                    request_browser_fullscreen()
+                    player_data = get_player(player_name)
+                    sound_enabled = player_data.get("sound_enabled", True)
+                    task_num = player_data.get("task_num", 1)
+                    current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
+                    step_in_world = (task_num - 1) % STEPS_PER_WORLD
+                    hero_x = float(platforms[step_in_world][0])
+                    hero_y = float(platforms[step_in_world][1] - 24)
+                    target_x, target_y = hero_x, hero_y
+                    ten_errors = []
+                    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+                    game_state = "GAME"
+                elif selected_for_stats:
+                    player_name = selected_for_stats
+                    player_data = get_player(player_name, apply_daily_bonus=False)
+                    sound_enabled = player_data.get("sound_enabled", True)
+                    history_page = 0
+                    history_selected_index = None
+                    game_state = "HISTORY"
 
             elif game_state == "GAME":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -763,9 +836,18 @@ async def main():
                     if nav_workbench.collidepoint(mouse_pos):
                         game_state = "WORKBENCH"
                         continue
-                    if nav_switch_player.collidepoint(mouse_pos):
-                        player_name = ""
+                    if nav_players.collidepoint(mouse_pos):
                         game_state = "LOGIN"
+                        continue
+                    if nav_sound.collidepoint(mouse_pos):
+                        sound_enabled = not sound_enabled
+                        all_data = load_data()
+                        p = all_data[player_name.strip()]
+                        p["sound_enabled"] = sound_enabled
+                        save_data(all_data)
+                        player_data = p
+                        if sound_enabled:
+                            play_sound("correct")
                         continue
                     if nav_reset_game.collidepoint(mouse_pos):
                         game_state = "CONFIRM_RESET"
@@ -783,6 +865,7 @@ async def main():
                                 p = all_data[player_name.strip()]
 
                                 if choices[i] == correct_ans:
+                                    play_sound("correct")
                                     combo_count += 1
                                     gain = 2 if combo_count >= 5 else 1
                                     if p.get("luck_timer", 0) > 0:
@@ -823,13 +906,23 @@ async def main():
                                         question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
 
                                 else:
+                                    play_sound("wrong")
                                     wrong_val = choices[i]
-                                    if not any(err["expr"] == clean_expr for err in ten_errors):
-                                        ten_errors.append({
-                                            "expr": clean_expr,
-                                            "wrong": wrong_val,
-                                            "correct": correct_ans
-                                        })
+                                    p["marathon_errors"] = p.get("marathon_errors", 0) + 1
+                                    p.setdefault("marathon_error_details", []).append({
+                                        "world": current_world_idx + 1,
+                                        "task": task_num,
+                                        "expr": clean_expr,
+                                        "wrong": wrong_val,
+                                        "correct": correct_ans
+                                    })
+                                    save_data(all_data)
+                                    player_data = p
+                                    ten_errors.append({
+                                        "expr": clean_expr,
+                                        "wrong": wrong_val,
+                                        "correct": correct_ans
+                                    })
                                     combo_count = 0
                                     message = "Ой, крипер взорвал ответ! Попробуй другой!"
                                     message_color = RED
@@ -846,7 +939,8 @@ async def main():
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if boss_won:
                         if boss_btn_finish.collidepoint(mouse_pos):
-                            game_state = "GAME"
+                            stats_page = 0
+                            game_state = "FINAL_STATS"
                     else:
                         for i, rect in enumerate(boss_answer_buttons):
                             if rect.collidepoint(mouse_pos):
@@ -860,15 +954,25 @@ async def main():
                                     spawn_hit_sparks(720, 160)
 
                                     if boss_streak >= boss_max_hp:
+                                        play_sound("victory")
                                         boss_won = True
                                         boss_msg = "ДРАКОН КРАЯ ПОВЕРЖЕН!"
                                         p["emeralds"] += 50
+                                        p.setdefault("game_history", []).append({
+                                            "completed_at": datetime.now().isoformat(timespec="minutes"),
+                                            "errors": p.get("marathon_errors", 0),
+                                            "error_details": [dict(item) for item in p.get("marathon_error_details", [])],
+                                            "boss_hp": boss_max_hp,
+                                            "grade": PLAYER_PROFILES.get(player_name, {}).get("grade")
+                                        })
                                         save_data(all_data)
                                         player_data = p
                                     else:
+                                        play_sound("hit")
                                         boss_msg = f"Точный удар! Серия: {boss_streak} из {boss_max_hp}!"
                                         boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
                                 else:
+                                    play_sound("wrong")
                                     if p.get("totems", 0) > 0:
                                         p["totems"] -= 1
                                         save_data(all_data)
@@ -877,10 +981,54 @@ async def main():
                                         boss_msg = f"Тотем спас от ошибки! Осталось тотемов: {p['totems']}"
                                         boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
                                     else:
-                                        boss_streak = max(0, boss_streak - 2)
-                                        boss_msg = f"ОШИБКА (было {boss_ans})! Откат на 2 шага назад!"
+                                        boss_streak = 0
+                                        boss_msg = f"ОШИБКА (было {boss_ans})! Серия ударов сброшена!"
                                         spawn_dust(280, 190, color=(220, 50, 50))
                                         boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+
+            elif game_state == "FINAL_STATS":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    error_details = player_data.get("marathon_error_details", [])
+                    total_pages = max(1, math.ceil(len(error_details) / STATS_PER_PAGE))
+                    if stats_page > 0 and stats_prev_btn.collidepoint(mouse_pos):
+                        stats_page -= 1
+                    elif stats_page < total_pages - 1 and stats_next_btn.collidepoint(mouse_pos):
+                        stats_page += 1
+                    elif stats_restart_btn.collidepoint(mouse_pos):
+                        reset_entire_marathon()
+
+            elif game_state == "HISTORY":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    history = player_data.get("game_history", [])
+                    total_pages = max(1, math.ceil(len(history) / HISTORY_PER_PAGE))
+                    if history_back_btn.collidepoint(mouse_pos):
+                        game_state = "LOGIN"
+                    elif history_page > 0 and history_prev_btn.collidepoint(mouse_pos):
+                        history_page -= 1
+                    elif history_page < total_pages - 1 and history_next_btn.collidepoint(mouse_pos):
+                        history_page += 1
+                    else:
+                        page_start = history_page * HISTORY_PER_PAGE
+                        page_indices = list(range(len(history) - 1, -1, -1))[page_start:page_start + HISTORY_PER_PAGE]
+                        for row_idx, record_index in enumerate(page_indices):
+                            if history_detail_buttons[row_idx].collidepoint(mouse_pos):
+                                history_selected_index = record_index
+                                stats_page = 0
+                                game_state = "HISTORY_DETAIL"
+                                break
+
+            elif game_state == "HISTORY_DETAIL":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    history = player_data.get("game_history", [])
+                    if history_back_btn.collidepoint(mouse_pos):
+                        game_state = "HISTORY"
+                    elif history_selected_index is not None and 0 <= history_selected_index < len(history):
+                        details = history[history_selected_index].get("error_details", [])
+                        total_pages = max(1, math.ceil(len(details) / STATS_PER_PAGE))
+                        if stats_page > 0 and history_prev_btn.collidepoint(mouse_pos):
+                            stats_page -= 1
+                        elif stats_page < total_pages - 1 and history_next_btn.collidepoint(mouse_pos):
+                            stats_page += 1
 
             elif game_state == "MOB_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -919,6 +1067,7 @@ async def main():
                                 p = all_data[player_name.strip()]
 
                                 if mob_choices[i] == mob_ans:
+                                    play_sound("hit")
                                     mob_hp -= 1
                                     sword_swing_timer = 12
                                     mob_flash_timer = 10
@@ -930,6 +1079,7 @@ async def main():
                                         mob_battle_result_msg = f"Точный удар! Осталось сердец: {mob_hp}"
                                         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
                                 else:
+                                    play_sound("wrong")
                                     if p.get("totems", 0) > 0:
                                         p["totems"] -= 1
                                         save_data(all_data)
@@ -991,7 +1141,8 @@ async def main():
                                     p["emeralds"] -= h_info["cost"]
                                     p["unlocked_helmets"].append(h_id)
                                     p["helmet"] = h_id
-                                save_data(all_data)
+                                    play_sound("purchase")
+                                    save_data(all_data)
                                 player_data = p
 
                     elif workbench_tab == "VEHICLES":
@@ -1002,7 +1153,8 @@ async def main():
                                 if v_code not in p["upgraded_vehicles"] and p["emeralds"] >= w_info["upg_cost"]:
                                     p["emeralds"] -= w_info["upg_cost"]
                                     p["upgraded_vehicles"].append(v_code)
-                                save_data(all_data)
+                                    play_sound("purchase")
+                                    save_data(all_data)
                                 player_data = p
 
                     elif workbench_tab == "ARTIFACTS":
@@ -1012,7 +1164,8 @@ async def main():
                                 if art_id not in p["artifacts"] and p["emeralds"] >= art_info["cost"]:
                                     p["emeralds"] -= art_info["cost"]
                                     p["artifacts"].append(art_id)
-                                save_data(all_data)
+                                    play_sound("purchase")
+                                    save_data(all_data)
                                 player_data = p
 
                     elif workbench_tab == "POTIONS":
@@ -1023,12 +1176,14 @@ async def main():
                                     if p.get("totems", 0) < pot_info["max"] and p["emeralds"] >= pot_info["cost"]:
                                         p["emeralds"] -= pot_info["cost"]
                                         p["totems"] = p.get("totems", 0) + 1
+                                        play_sound("purchase")
                                         save_data(all_data)
                                         player_data = p
                                 elif pot_id == "luck":
                                     if p.get("luck_timer", 0) == 0 and p["emeralds"] >= pot_info["cost"]:
                                         p["emeralds"] -= pot_info["cost"]
                                         p["luck_timer"] = 10
+                                        play_sound("purchase")
                                         save_data(all_data)
                                         player_data = p
 
@@ -1090,28 +1245,36 @@ async def main():
         # Отрисовка
         if game_state == "LOGIN":
             screen.fill((115, 170, 225))
-            card = pygame.Rect(WIDTH//2 - 240, 75, 480, 360)
+            card = pygame.Rect(WIDTH // 2 - 320, 75, 640, 360)
             pygame.draw.rect(screen, MC_GUI_BG, card)
             pygame.draw.rect(screen, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
             pygame.draw.rect(screen, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
             pygame.draw.rect(screen, MC_GUI_BLACK, card, 3)
 
-            draw_emerald(screen, WIDTH//2, 115, r=16)
+            draw_emerald(screen, WIDTH // 2, 115, r=16)
             t1 = FONT_TITLE.render("Математика в Майнкрафте", True, DARK_TEXT)
-            t2 = FONT_MED.render("Выбери имя героя или введи своё:", True, (80, 80, 80))
-            screen.blit(t1, (WIDTH//2 - t1.get_width()//2, 145))
-            screen.blit(t2, (WIDTH//2 - t2.get_width()//2, 180))
+            t2 = FONT_MED.render("Выбери игрока", True, (70, 80, 100))
+            screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, 145))
+            screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, 190))
 
-            cur_nick_txt = FONT_BIG.render(f"Имя: {player_name or '...'}", True, (20, 40, 100))
-            screen.blit(cur_nick_txt, (WIDTH//2 - cur_nick_txt.get_width()//2, 215))
-
-            draw_mc_button(screen, btn_nick_keyboard, "Ввести с клавиатуры", btn_nick_keyboard.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(90, 120, 160))
-            draw_mc_button(screen, btn_nick_steve, "Стив", btn_nick_steve.collidepoint(mouse_pos), font_pref=FONT_MED)
-            draw_mc_button(screen, btn_nick_alex, "Алекс", btn_nick_alex.collidepoint(mouse_pos), font_pref=FONT_MED)
-            draw_mc_button(screen, btn_nick_hero, "Герой", btn_nick_hero.collidepoint(mouse_pos), font_pref=FONT_MED)
-
-            btn_start = pygame.Rect(WIDTH//2 - 100, 345, 200, 46)
-            draw_mc_button(screen, btn_start, "Играть в мире", btn_start.collidepoint(mouse_pos), bool(player_name.strip()), custom_bg=(60, 140, 70))
+            for profile_name, profile in PLAYER_PROFILES.items():
+                row_y = 255 if profile_name == "Ксения" else 340
+                profile_text = FONT_BIG.render(f"{profile_name} · {profile['grade']} класс", True, (35, 55, 95))
+                screen.blit(profile_text, (card.x + 35, row_y - profile_text.get_height() // 2 + 10))
+                draw_mc_button(
+                    screen,
+                    player_play_buttons[profile_name],
+                    "Играть",
+                    player_play_buttons[profile_name].collidepoint(mouse_pos),
+                    custom_bg=(60, 140, 70)
+                )
+                draw_mc_button(
+                    screen,
+                    player_stats_buttons[profile_name],
+                    "Статистика",
+                    player_stats_buttons[profile_name].collidepoint(mouse_pos),
+                    custom_bg=(75, 105, 155)
+                )
 
         elif game_state == "GAME":
             screen.fill(cur_w["sky"])
@@ -1148,8 +1311,10 @@ async def main():
 
             totems_cnt = player_data.get("totems", 0)
             luck_cnt = player_data.get("luck_timer", 0)
+            errors_cnt = player_data.get("marathon_errors", 0)
             totem_info = f" | Т: {totems_cnt}" if totems_cnt > 0 else ""
             luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 else ""
+            errors_info = f" | О: {errors_cnt}" if errors_cnt > 0 else ""
 
             bar_box = pygame.Rect(15, 10, 360, 34)
             pygame.draw.rect(screen, MC_GUI_BG, bar_box)
@@ -1158,11 +1323,15 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BLACK, bar_box, 2)
 
             draw_emerald(screen, 32, 27, r=8)
-            info_txt = FONT_MED.render(f"{player_data['emeralds']}{totem_info}{luck_info} | {player_name}", True, DARK_TEXT)
+            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{errors_info} | {player_name}"
+            info_font = FONT_MED if FONT_MED.size(info_label)[0] <= bar_box.width - 40 else FONT_SMALL
+            info_txt = info_font.render(info_label, True, DARK_TEXT)
             screen.blit(info_txt, (46, 17))
 
             draw_mc_button(screen, nav_workbench, "Верстак", nav_workbench.collidepoint(mouse_pos), font_pref=FONT_SMALL)
-            draw_mc_button(screen, nav_switch_player, "Игрок", nav_switch_player.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            draw_mc_button(screen, nav_players, "Игроки", nav_players.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(95, 100, 125))
+            sound_label = "Звук: да" if sound_enabled else "Звук: нет"
+            draw_mc_button(screen, nav_sound, sound_label, nav_sound.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(70, 115, 155))
             draw_mc_button(screen, nav_reset_game, "Сброс", nav_reset_game.collidepoint(mouse_pos), font_pref=FONT_SMALL, custom_bg=(180, 60, 60))
             draw_mc_button(screen, nav_fullscreen, "Во весь", nav_fullscreen.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(90, 100, 120))
 
@@ -1199,7 +1368,7 @@ async def main():
 
                 draw_readable_badge(screen, WIDTH // 2, 318, message, border_col=msg_b_col, text_col=WHITE, font=FONT_MED)
             else:
-                win_box = pygame.Rect(WIDTH//2 - 280, 150, 560, 290)
+                win_box = pygame.Rect(WIDTH//2 - 330, 150, 660, 290)
                 pygame.draw.rect(screen, MC_GUI_BG, win_box)
                 pygame.draw.rect(screen, MC_GOLD, win_box, 4)
                 w1 = FONT_TITLE.render("МАРАФОН 50 ПРОЙДЕН! ДРАКОН СВЕРГНУТ!", True, GREEN)
@@ -1209,7 +1378,7 @@ async def main():
                 screen.blit(w2, (WIDTH//2 - w2.get_width()//2, 235))
                 screen.blit(w3, (WIDTH//2 - w3.get_width()//2, 280))
 
-                draw_mc_button(screen, final_win_restart_btn, "Начать новый марафон ↺", final_win_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
+                draw_mc_button(screen, final_win_restart_btn, "Начать новый марафон", final_win_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
 
         elif game_state == "CONFIRM_RESET":
             screen.fill((40, 40, 45))
@@ -1314,9 +1483,13 @@ async def main():
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
             
-            hearts_start_x = 720 - (boss_max_hp * 26) // 2 + 13
-            for h_i in range(boss_max_hp):
-                draw_mc_heart(screen, hearts_start_x + h_i * 26, 95, filled=(h_i < boss_streak))
+            if boss_max_hp <= 10:
+                hearts_start_x = 720 - (boss_max_hp * 26) // 2 + 13
+                for h_i in range(boss_max_hp):
+                    draw_mc_heart(screen, hearts_start_x + h_i * 26, 95, filled=(h_i < boss_streak))
+            else:
+                streak_surf = FONT_MED.render(f"Серия ударов: {boss_streak} / {boss_max_hp}", True, WHITE)
+                screen.blit(streak_surf, (720 - streak_surf.get_width() // 2, 87))
 
             draw_ender_dragon_boss(screen, 720, 175, anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
 
@@ -1351,7 +1524,174 @@ async def main():
                 screen.blit(FONT_MED.render(sub_info, True, WHITE), (WIDTH // 2 - FONT_MED.size(sub_info)[0] // 2, 325))
                 screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 360))
 
-                draw_mc_button(screen, boss_btn_finish, "Завершить Марафон!", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED)
+                draw_mc_button(screen, boss_btn_finish, "Посмотреть статистику", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED)
+
+        elif game_state == "FINAL_STATS":
+            screen.fill((28, 32, 42))
+            stats_card = pygame.Rect(120, 20, 760, 560)
+            pygame.draw.rect(screen, MC_GUI_BG, stats_card)
+            pygame.draw.rect(screen, MC_GOLD, stats_card, 4)
+
+            stats_title = FONT_TITLE.render("СТАТИСТИКА МАРАФОНА", True, (35, 115, 65))
+            screen.blit(stats_title, (WIDTH // 2 - stats_title.get_width() // 2, 42))
+
+            error_details = player_data.get("marathon_error_details", [])
+            total_errors = player_data.get("marathon_errors", len(error_details))
+            summary = FONT_BIG.render(
+                f"Пройдено 50 заданий | Ошибок: {total_errors} | Серия против босса: {boss_max_hp}",
+                True,
+                DARK_TEXT
+            )
+            screen.blit(summary, (WIDTH // 2 - summary.get_width() // 2, 82))
+
+            if error_details:
+                total_pages = max(1, math.ceil(len(error_details) / STATS_PER_PAGE))
+                stats_page = min(stats_page, total_pages - 1)
+                page_start = stats_page * STATS_PER_PAGE
+                page_errors = error_details[page_start:page_start + STATS_PER_PAGE]
+
+                for row_idx, error in enumerate(page_errors):
+                    item_idx = page_start + row_idx + 1
+                    row = pygame.Rect(stats_card.x + 35, 120 + row_idx * 56, stats_card.width - 70, 46)
+                    pygame.draw.rect(screen, (225, 228, 232), row)
+                    pygame.draw.rect(screen, MC_GUI_DARK, row, 2)
+
+                    error_text = (
+                        f"{item_idx}. Биом {error.get('world', '?')}, задание {error.get('task', '?')}: "
+                        f"{error.get('expr', '?')} = {error.get('wrong', '?')}; верно: {error.get('correct', '?')}"
+                    )
+                    error_surf = FONT_MED.render(error_text, True, DARK_TEXT)
+                    screen.blit(error_surf, (row.x + 12, row.centery - error_surf.get_height() // 2))
+
+                page_label = FONT_SMALL.render(f"Страница {stats_page + 1} из {total_pages}", True, (80, 80, 80))
+                screen.blit(page_label, (WIDTH // 2 - page_label.get_width() // 2, 467))
+
+                if stats_page > 0:
+                    draw_mc_button(screen, stats_prev_btn, "< Назад", stats_prev_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+                if stats_page < total_pages - 1:
+                    draw_mc_button(screen, stats_next_btn, "Дальше >", stats_next_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            elif total_errors > 0:
+                legacy_text = FONT_MED.render("Подробности прежних ошибок не сохранились в старой версии игры.", True, (150, 75, 45))
+                screen.blit(legacy_text, (WIDTH // 2 - legacy_text.get_width() // 2, 225))
+            else:
+                perfect_title = FONT_TITLE.render("ИДЕАЛЬНОЕ ПРОХОЖДЕНИЕ!", True, GREEN)
+                perfect_text = FONT_BIG.render("Все задания решены без единой ошибки.", True, DARK_TEXT)
+                screen.blit(perfect_title, (WIDTH // 2 - perfect_title.get_width() // 2, 195))
+                screen.blit(perfect_text, (WIDTH // 2 - perfect_text.get_width() // 2, 250))
+
+            draw_mc_button(screen, stats_restart_btn, "Новый марафон", stats_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
+
+        elif game_state == "HISTORY":
+            screen.fill((35, 40, 52))
+            history_card = pygame.Rect(120, 20, 760, 560)
+            pygame.draw.rect(screen, MC_GUI_BG, history_card)
+            pygame.draw.rect(screen, (70, 105, 165), history_card, 4)
+
+            history_title = FONT_TITLE.render(f"ИСТОРИЯ ИГР — {player_name.upper()}", True, (35, 75, 145))
+            screen.blit(history_title, (WIDTH // 2 - history_title.get_width() // 2, 42))
+
+            history = player_data.get("game_history", [])
+            if history:
+                total_errors_all = sum(record.get("errors", 0) for record in history)
+                average_errors = total_errors_all / len(history)
+                history_summary = FONT_MED.render(
+                    f"Завершено игр: {len(history)} | Всего ошибок: {total_errors_all} | В среднем: {average_errors:.1f}",
+                    True,
+                    DARK_TEXT
+                )
+                screen.blit(history_summary, (WIDTH // 2 - history_summary.get_width() // 2, 82))
+
+                total_pages = max(1, math.ceil(len(history) / HISTORY_PER_PAGE))
+                history_page = min(history_page, total_pages - 1)
+                page_start = history_page * HISTORY_PER_PAGE
+                page_indices = list(range(len(history) - 1, -1, -1))[page_start:page_start + HISTORY_PER_PAGE]
+
+                for row_idx, record_index in enumerate(page_indices):
+                    record = history[record_index]
+                    row = pygame.Rect(history_card.x + 35, 115 + row_idx * 72, history_card.width - 70, 58)
+                    pygame.draw.rect(screen, (225, 228, 235), row)
+                    pygame.draw.rect(screen, (80, 95, 125), row, 2)
+
+                    completed_at = str(record.get("completed_at", "Дата неизвестна")).replace("T", " ")
+                    row_title = FONT_MED.render(f"Игра #{record_index + 1} · {completed_at}", True, DARK_TEXT)
+                    row_info = FONT_SMALL.render(
+                        f"Ошибок: {record.get('errors', 0)} · Ответов подряд для босса: {record.get('boss_hp', 5)}",
+                        True,
+                        (75, 75, 85)
+                    )
+                    screen.blit(row_title, (row.x + 12, row.y + 7))
+                    screen.blit(row_info, (row.x + 12, row.y + 32))
+                    draw_mc_button(
+                        screen,
+                        history_detail_buttons[row_idx],
+                        "Подробнее",
+                        history_detail_buttons[row_idx].collidepoint(mouse_pos),
+                        font_pref=FONT_SMALL,
+                        custom_bg=(75, 105, 155)
+                    )
+
+                page_label = FONT_SMALL.render(f"Страница {history_page + 1} из {total_pages}", True, (80, 80, 80))
+                screen.blit(page_label, (WIDTH // 2 - page_label.get_width() // 2, 482))
+
+                if history_page > 0:
+                    draw_mc_button(screen, history_prev_btn, "< Назад", history_prev_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+                if history_page < total_pages - 1:
+                    draw_mc_button(screen, history_next_btn, "Дальше >", history_next_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            else:
+                empty_title = FONT_TITLE.render("Завершённых игр пока нет", True, (80, 90, 110))
+                empty_hint = FONT_MED.render("История появится после победы над Драконом.", True, (90, 90, 95))
+                screen.blit(empty_title, (WIDTH // 2 - empty_title.get_width() // 2, 220))
+                screen.blit(empty_hint, (WIDTH // 2 - empty_hint.get_width() // 2, 270))
+
+            draw_mc_button(screen, history_back_btn, "К игрокам", history_back_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+
+        elif game_state == "HISTORY_DETAIL":
+            screen.fill((35, 40, 52))
+            detail_card = pygame.Rect(120, 20, 760, 560)
+            pygame.draw.rect(screen, MC_GUI_BG, detail_card)
+            pygame.draw.rect(screen, (70, 105, 165), detail_card, 4)
+
+            history = player_data.get("game_history", [])
+            record = history[history_selected_index] if history_selected_index is not None and 0 <= history_selected_index < len(history) else {}
+            detail_title = FONT_TITLE.render(f"{player_name.upper()} · ИГРА #{(history_selected_index or 0) + 1}", True, (35, 75, 145))
+            screen.blit(detail_title, (WIDTH // 2 - detail_title.get_width() // 2, 42))
+
+            completed_at = str(record.get("completed_at", "Дата неизвестна")).replace("T", " ")
+            detail_summary = FONT_MED.render(
+                f"{completed_at} | Ошибок: {record.get('errors', 0)} | Босс: {record.get('boss_hp', 5)} ответов подряд",
+                True,
+                DARK_TEXT
+            )
+            screen.blit(detail_summary, (WIDTH // 2 - detail_summary.get_width() // 2, 82))
+
+            details = record.get("error_details", [])
+            if details:
+                total_pages = max(1, math.ceil(len(details) / STATS_PER_PAGE))
+                stats_page = min(stats_page, total_pages - 1)
+                page_start = stats_page * STATS_PER_PAGE
+                for row_idx, error in enumerate(details[page_start:page_start + STATS_PER_PAGE]):
+                    item_idx = page_start + row_idx + 1
+                    row = pygame.Rect(detail_card.x + 35, 120 + row_idx * 56, detail_card.width - 70, 46)
+                    pygame.draw.rect(screen, (225, 228, 232), row)
+                    pygame.draw.rect(screen, MC_GUI_DARK, row, 2)
+                    error_text = (
+                        f"{item_idx}. Биом {error.get('world', '?')}, задание {error.get('task', '?')}: "
+                        f"{error.get('expr', '?')} = {error.get('wrong', '?')}; верно: {error.get('correct', '?')}"
+                    )
+                    error_surf = FONT_MED.render(error_text, True, DARK_TEXT)
+                    screen.blit(error_surf, (row.x + 12, row.centery - error_surf.get_height() // 2))
+
+                page_label = FONT_SMALL.render(f"Страница {stats_page + 1} из {total_pages}", True, (80, 80, 80))
+                screen.blit(page_label, (WIDTH // 2 - page_label.get_width() // 2, 467))
+                if stats_page > 0:
+                    draw_mc_button(screen, history_prev_btn, "< Назад", history_prev_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+                if stats_page < total_pages - 1:
+                    draw_mc_button(screen, history_next_btn, "Дальше >", history_next_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            else:
+                perfect_title = FONT_TITLE.render("ИГРА БЕЗ ОШИБОК!", True, GREEN)
+                screen.blit(perfect_title, (WIDTH // 2 - perfect_title.get_width() // 2, 230))
+
+            draw_mc_button(screen, history_back_btn, "К истории", history_back_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
 
         elif game_state == "REVIEW":
             screen.fill((50, 50, 55))
@@ -1368,7 +1708,8 @@ async def main():
             screen.blit(t_head, (WIDTH // 2 - t_head.get_width() // 2, 45))
 
             if len(ten_errors) > 0:
-                sub = FONT_MED.render(f"Неудачные попытки: {len(ten_errors)}. Давай закрепим рецепты!", True, (160, 30, 30))
+                total_errors = player_data.get("marathon_errors", 0)
+                sub = FONT_MED.render(f"Ошибки биома: {len(ten_errors)}. Всего в марафоне: {total_errors}.", True, (160, 30, 30))
                 screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 85))
 
                 for idx, err in enumerate(ten_errors[:6]):
