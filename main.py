@@ -200,8 +200,8 @@ HELP_PAGES = [
         "lines": [
             "Страж прячется в случайном месте каждого мира.",
             "Ошибка у стража без тотема возвращает в начало биома.",
-            "Старец Фура даёт одну логическую загадку за марафон.",
-            "Верный ответ Старцу приносит бесплатный артефакт.",
+            "Библиотекарь даёт одну логическую загадку за марафон.",
+            "Верный ответ библиотекарю приносит бесплатный артефакт.",
             "Дракон повторяет примеры, в которых были ошибки.",
             "История хранит ошибки, время и рекорды каждого игрока.",
         ],
@@ -809,25 +809,27 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
             pygame.draw.rect(surf, mite_col, (sx, sy - 7, 16, 14), border_radius=4)
             pygame.draw.line(surf, (180, 100, 220), (sx + 5, sy - 7), (sx + 1, sy - 14), 2)
 
-def draw_sage_fouras(surf, cx, cy, anim_tick=0):
-    """Original pixel-art sage inspired by a mysterious fortress riddler."""
+def draw_librarian(surf, cx, cy, anim_tick=0):
     bob = int(math.sin(anim_tick * 0.08) * 2)
     cy += bob
-    robe = (75, 65, 105)
-    robe_light = (105, 90, 135)
-    skin = (220, 175, 135)
-    hair = (225, 225, 215)
-    pygame.draw.polygon(surf, robe, [(cx - 24, cy + 42), (cx + 24, cy + 42), (cx + 14, cy - 2), (cx - 14, cy - 2)])
-    pygame.draw.rect(surf, robe_light, (cx - 8, cy + 8, 16, 28))
-    pygame.draw.rect(surf, skin, (cx - 16, cy - 30, 32, 30))
-    pygame.draw.rect(surf, hair, (cx - 19, cy - 34, 38, 9))
-    pygame.draw.rect(surf, hair, (cx - 20, cy - 27, 7, 25))
-    pygame.draw.rect(surf, hair, (cx + 13, cy - 27, 7, 25))
-    pygame.draw.rect(surf, (45, 45, 55), (cx - 10, cy - 19, 5, 4))
-    pygame.draw.rect(surf, (45, 45, 55), (cx + 5, cy - 19, 5, 4))
-    pygame.draw.polygon(surf, hair, [(cx - 13, cy - 4), (cx + 13, cy - 4), (cx, cy + 20)])
-    pygame.draw.line(surf, (120, 80, 45), (cx + 22, cy - 2), (cx + 29, cy + 43), 4)
-    pygame.draw.circle(surf, MC_GOLD, (cx + 22, cy - 5), 5)
+    skin = (185, 135, 95)
+    robe = (235, 225, 205)
+    robe_shadow = (185, 170, 145)
+    pygame.draw.rect(surf, robe, (cx - 19, cy - 2, 38, 44))
+    pygame.draw.rect(surf, robe_shadow, (cx - 19, cy + 30, 38, 12))
+    pygame.draw.rect(surf, skin, (cx - 18, cy - 34, 36, 34))
+    pygame.draw.rect(surf, (170, 35, 35), (cx - 20, cy - 39, 40, 8))
+    pygame.draw.rect(surf, (235, 225, 205), (cx - 13, cy - 45, 26, 7))
+    pygame.draw.rect(surf, (65, 45, 30), (cx - 13, cy - 25, 26, 5))
+    pygame.draw.rect(surf, (80, 180, 90), (cx - 11, cy - 23, 5, 4))
+    pygame.draw.rect(surf, (80, 180, 90), (cx + 6, cy - 23, 5, 4))
+    pygame.draw.rect(surf, skin, (cx - 5, cy - 19, 12, 14))
+    pygame.draw.rect(surf, (110, 70, 45), (cx - 2, cy - 10, 10, 5))
+    pygame.draw.rect(surf, skin, (cx - 27, cy + 7, 12, 25))
+    pygame.draw.rect(surf, skin, (cx + 15, cy + 7, 12, 25))
+    pygame.draw.rect(surf, (115, 70, 35), (cx - 22, cy + 18, 44, 19))
+    pygame.draw.rect(surf, (235, 210, 115), (cx - 17, cy + 22, 34, 3))
+    pygame.draw.line(surf, (70, 45, 25), (cx, cy + 19), (cx, cy + 36), 2)
 
 def draw_ender_dragon_boss(surf, cx, cy, anim_tick=0, flash_red=False):
     wing_flap = int(math.sin(anim_tick * 0.22) * 24)
@@ -992,7 +994,7 @@ boss_is_review = False
 boss_speed_bonus = False
 boss_previous_time = None
 
-# Переменные Старца Фура
+# Переменные библиотекаря
 sage_question = ""
 sage_answer = None
 sage_choices = []
@@ -1467,7 +1469,7 @@ async def main():
                                     player_data = p
                                     sage_finished = True
                                     sage_won = False
-                                    sage_msg = "Старец уходит. В этом марафоне новой попытки не будет."
+                                    sage_msg = "Библиотекарь уходит. В этом марафоне новой попытки не будет."
                                     if pet_error and pet_error["ran_away"]:
                                         sage_msg += f" {pet_error['pet_name']} тоже убежал!"
                                     play_sound("wrong")
@@ -1946,7 +1948,7 @@ async def main():
                     and i == sage_step
                     and step_in_world < sage_step
                 ):
-                    draw_sage_fouras(screen, px, py - 42, anim_tick=anim_tick)
+                    draw_librarian(screen, px, py - 42, anim_tick=anim_tick)
                 if current_world_idx == 4 and i == 10 and task_num <= TOTAL_QUESTS:
                     pygame.draw.circle(screen, PURPLE, (px, py - 30), 12)
                     pygame.draw.circle(screen, WHITE, (px, py - 30), 4)
@@ -2135,20 +2137,23 @@ async def main():
                 draw_mc_button(screen, mob_btn_continue, btn_txt, mob_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         elif game_state == "SAGE_CHALLENGE":
-            screen.fill((25, 32, 48))
-            pygame.draw.rect(screen, (70, 75, 90), (0, 430, WIDTH, 170))
-            for tower_x in (90, 790):
-                pygame.draw.rect(screen, (105, 105, 115), (tower_x, 70, 120, 360))
-                for stone_y in range(90, 420, 45):
-                    pygame.draw.line(screen, (75, 75, 85), (tower_x, stone_y), (tower_x + 120, stone_y), 2)
-                pygame.draw.rect(screen, (45, 45, 55), (tower_x + 38, 130, 44, 80), border_radius=18)
+            screen.fill((135, 195, 235))
+            pygame.draw.rect(screen, (105, 150, 70), (0, 430, WIDTH, 170))
+            for shelf_x in (75, 805):
+                pygame.draw.rect(screen, (105, 65, 35), (shelf_x, 65, 120, 365))
+                pygame.draw.rect(screen, (155, 105, 60), (shelf_x + 8, 75, 104, 345))
+                for shelf_y in range(125, 421, 74):
+                    pygame.draw.rect(screen, (80, 48, 25), (shelf_x + 5, shelf_y, 110, 8))
+                    for book_idx, book_color in enumerate(((170, 45, 45), (45, 90, 155), (190, 150, 45), (65, 135, 70))):
+                        book_x = shelf_x + 13 + book_idx * 24
+                        pygame.draw.rect(screen, book_color, (book_x, shelf_y - 38, 17, 38))
 
             card = pygame.Rect(210, 25, 580, 535)
             pygame.draw.rect(screen, (198, 198, 198), card)
             pygame.draw.rect(screen, MC_GOLD, card, 4)
-            title = FONT_TITLE.render("ИСПЫТАНИЕ СТАРЦА ФУРА", True, (75, 55, 100))
+            title = FONT_TITLE.render("ЗАГАДКА БИБЛИОТЕКАРЯ", True, (75, 55, 100))
             screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 48))
-            draw_sage_fouras(screen, WIDTH // 2, 155, anim_tick)
+            draw_librarian(screen, WIDTH // 2, 155, anim_tick)
 
             if not sage_finished:
                 draw_centered_wrapped_text(
@@ -2174,7 +2179,7 @@ async def main():
                 reward_title = FONT_TITLE.render(result_title, True, GREEN if sage_won else RED)
                 screen.blit(reward_title, (WIDTH // 2 - reward_title.get_width() // 2, 270))
                 result_text = (
-                    f"Старец вручает тебе: {sage_reward_name}"
+                    f"Библиотекарь вручает тебе: {sage_reward_name}"
                     if sage_won else
                     sage_msg
                 )
