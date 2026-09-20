@@ -961,7 +961,7 @@ def start_mob_encounter():
     mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
 
 def start_boss_battle():
-    global game_state, boss_streak, boss_max_hp, boss_task_str, boss_ans, boss_choices, boss_clean_expr, boss_op
+    global game_state, boss_streak, boss_max_hp
     global boss_msg, boss_won, boss_review_queue
 
     game_state = "BOSS_BATTLE"
@@ -1079,10 +1079,9 @@ async def main():
     global hero_x, hero_y, target_x, target_y, is_moving, move_progress, squash_val, anim_tick
     global sword_swing_timer, mob_flash_timer, ten_errors, question_str, correct_ans, choices, current_op, clean_expr
     global message, message_color, mob_hp, mob_task_str, mob_ans, mob_choices, mob_clean_expr, mob_op
-    global mob_battle_result_msg, mob_failed_reset, boss_streak, boss_task_str, boss_ans, boss_choices
-    global boss_op, boss_clean_expr, boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
+    global mob_battle_result_msg, mob_failed_reset, boss_streak
+    global boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
     global history_page, history_selected_index
-    global boss_review_queue, boss_is_review
     global sage_question, sage_answer, sage_choices, sage_msg, sage_won, sage_reward_name
 
     running = True
