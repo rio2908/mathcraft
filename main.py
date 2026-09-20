@@ -290,6 +290,7 @@ def get_player(name, apply_daily_bonus=True):
             "pet": "none",
             "pet_errors": 0,
             "pets_lost": 0,
+            "marathon_elapsed_seconds": 0,
         }
     else:
         p = profiles[name]
@@ -329,6 +330,7 @@ def get_player(name, apply_daily_bonus=True):
         if "pet" not in p: p["pet"] = "none"
         if "pet_errors" not in p: p["pet_errors"] = 0
         if "pets_lost" not in p: p["pets_lost"] = 0
+        if "marathon_elapsed_seconds" not in p: p["marathon_elapsed_seconds"] = 0
         for helmet_id in p.get("unlocked_helmets", ["none"]):
             if helmet_id != "none" and helmet_id not in p["helmet_durability"]:
                 p["helmet_durability"][helmet_id] = HELMETS.get(helmet_id, {}).get("max_durability", 0)
@@ -885,6 +887,7 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
 # ==================== ПЕРЕМЕННЫЕ И СОСТОЯНИЕ ====================
 TOTAL_QUESTS = 50
 STEPS_PER_WORLD = 10
+TIMED_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE"}
 base_y = 490
 platforms = [(95 + i * ((WIDTH - 190) // STEPS_PER_WORLD), base_y) for i in range(STEPS_PER_WORLD + 1)]
 
@@ -895,6 +898,8 @@ sound_enabled = player_data.get("sound_enabled", True)
 game_state = "LOGIN"
 
 task_num = player_data.get("task_num", 1) if player_data else 1
+marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0)) if player_data else 0.0
+timer_save_accumulator = 0.0
 combo_count = 0
 current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
 step_in_world = (task_num - 1) % STEPS_PER_WORLD
@@ -937,6 +942,8 @@ boss_msg = "Победи Дракона!"
 boss_won = False
 boss_review_queue = []
 boss_is_review = False
+boss_speed_bonus = False
+boss_previous_time = None
 
 # Переменные Старца Фура
 sage_question = ""
@@ -982,6 +989,24 @@ def spawn_speed_bubbles(x, y):
             random.uniform(-0.4, 0.4), random.uniform(-1.5, -0.6),
             (80, 255, 120), random.randint(20, 35), random.randint(2, 4)
         ])
+
+def format_duration(seconds):
+    total_seconds = max(0, int(round(seconds or 0)))
+    minutes, secs = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+def persist_marathon_timer():
+    if not player_name or not player_data:
+        return
+    elapsed = max(0, int(round(marathon_elapsed_seconds)))
+    player_data["marathon_elapsed_seconds"] = elapsed
+    all_data = load_data()
+    if player_name.strip() in all_data:
+        all_data[player_name.strip()]["marathon_elapsed_seconds"] = elapsed
+        save_data(all_data)
 
 def get_mob_max_hp():
     arts = player_data.get("artifacts", []) if player_data else []
@@ -1051,7 +1076,7 @@ def start_sage_encounter():
 def reset_entire_marathon():
     global task_num, step_in_world, current_world_idx, hero_x, hero_y, target_x, target_y, is_moving
     global ten_errors, question_str, correct_ans, choices, current_op, clean_expr, game_state, message, message_color
-    global player_data
+    global player_data, marathon_elapsed_seconds, timer_save_accumulator
 
     task_num = 1
     step_in_world = 0
@@ -1061,6 +1086,8 @@ def reset_entire_marathon():
     target_x, target_y = hero_x, hero_y
     is_moving = False
     ten_errors = []
+    marathon_elapsed_seconds = 0.0
+    timer_save_accumulator = 0.0
 
     all_data = load_data()
     if player_name.strip() in all_data:
@@ -1075,6 +1102,7 @@ def reset_entire_marathon():
         p["sage_task"] = create_sage_task(p["marathon_route"])
         p["sage_completed"] = False
         p["sage_artifact"] = None
+        p["marathon_elapsed_seconds"] = 0
         save_data(all_data)
         player_data = p
 
@@ -1138,6 +1166,7 @@ async def main():
     global boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
     global history_page, history_selected_index
     global sage_msg, sage_finished, sage_won, sage_reward_name
+    global marathon_elapsed_seconds, timer_save_accumulator, boss_speed_bonus, boss_previous_time
 
     running = True
 
@@ -1154,6 +1183,7 @@ async def main():
                 ensure_audio()
 
             if event.type == pygame.QUIT:
+                persist_marathon_timer()
                 running = False
 
             elif game_state == "LOGIN":
@@ -1171,6 +1201,8 @@ async def main():
                     request_browser_fullscreen()
                     player_data = get_player(player_name)
                     sound_enabled = player_data.get("sound_enabled", True)
+                    marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0))
+                    timer_save_accumulator = 0.0
                     task_num = player_data.get("task_num", 1)
                     current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
                     step_in_world = (task_num - 1) % STEPS_PER_WORLD
@@ -1190,6 +1222,8 @@ async def main():
                     player_name = selected_for_stats
                     player_data = get_player(player_name, apply_daily_bonus=False)
                     sound_enabled = player_data.get("sound_enabled", True)
+                    marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0))
+                    timer_save_accumulator = 0.0
                     history_page = 0
                     history_selected_index = None
                     game_state = "HISTORY"
@@ -1200,9 +1234,11 @@ async def main():
                         request_browser_fullscreen()
                         continue
                     if nav_workbench.collidepoint(mouse_pos):
+                        persist_marathon_timer()
                         game_state = "WORKBENCH"
                         continue
                     if nav_players.collidepoint(mouse_pos):
+                        persist_marathon_timer()
                         game_state = "LOGIN"
                         continue
                     if nav_sound.collidepoint(mouse_pos):
@@ -1392,9 +1428,19 @@ async def main():
                                     if boss_streak >= boss_max_hp:
                                         play_sound("victory")
                                         boss_won = True
+                                        history = p.setdefault("game_history", [])
+                                        current_duration = max(1, int(round(marathon_elapsed_seconds)))
+                                        previous_duration = history[-1].get("duration_seconds") if history else None
+                                        boss_previous_time = previous_duration
+                                        boss_speed_bonus = (
+                                            isinstance(previous_duration, (int, float))
+                                            and current_duration < int(previous_duration)
+                                        )
+                                        reward = 50 + (10 if boss_speed_bonus else 0)
                                         boss_msg = "ДРАКОН КРАЯ ПОВЕРЖЕН!"
-                                        p["emeralds"] += 50
-                                        p.setdefault("game_history", []).append({
+                                        p["emeralds"] += reward
+                                        p["marathon_elapsed_seconds"] = current_duration
+                                        history.append({
                                             "completed_at": datetime.now().isoformat(timespec="minutes"),
                                             "errors": p.get("marathon_errors", 0),
                                             "boss_penalty_errors": p.get("boss_penalty_errors", 0),
@@ -1403,6 +1449,9 @@ async def main():
                                             "boss_hp": boss_max_hp,
                                             "grade": PLAYER_PROFILES.get(player_name, {}).get("grade"),
                                             "sage_artifact": p.get("sage_artifact"),
+                                            "duration_seconds": current_duration,
+                                            "previous_duration_seconds": previous_duration,
+                                            "speed_bonus": boss_speed_bonus,
                                         })
                                         save_data(all_data)
                                         player_data = p
@@ -1822,6 +1871,7 @@ async def main():
             errors_info = f" | О: {errors_cnt}" if errors_cnt > 0 else ""
             helmet_info = f" | Ш: {helmet_durability}" if equipped_helmet != "none" else ""
             pet_info = f" | Волк: {pet_errors}/2" if player_data.get("pet", "none") != "none" else ""
+            time_info = f" | В: {format_duration(marathon_elapsed_seconds)}"
 
             bar_box = pygame.Rect(15, 10, 460, 34)
             pygame.draw.rect(screen, MC_GUI_BG, bar_box)
@@ -1830,7 +1880,7 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BLACK, bar_box, 2)
 
             draw_emerald(screen, 32, 27, r=8)
-            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{helmet_info}{pet_info}{errors_info} | {player_name}"
+            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{helmet_info}{pet_info}{errors_info}{time_info} | {player_name}"
             info_font = FONT_MED if FONT_MED.size(info_label)[0] <= bar_box.width - 40 else FONT_SMALL
             info_txt = info_font.render(info_label, True, DARK_TEXT)
             screen.blit(info_txt, (46, 17))
@@ -2094,9 +2144,23 @@ async def main():
                 screen.blit(r_title, (WIDTH // 2 - r_title.get_width() // 2, 280))
 
                 sub_info = f"Ты решил все {boss_max_hp} сложнейших примеров подряд!"
-                sub_reward = "Супер-награда за победу: +50 ИЗУМРУДОВ!"
+                final_duration = player_data.get("marathon_elapsed_seconds", marathon_elapsed_seconds)
+                if boss_previous_time is None:
+                    speed_text = f"Время: {format_duration(final_duration)} · Это первый результат"
+                elif boss_speed_bonus:
+                    speed_text = (
+                        f"НОВЫЙ РЕКОРД: {format_duration(final_duration)} "
+                        f"(было {format_duration(boss_previous_time)}) · бонус +10!"
+                    )
+                else:
+                    speed_text = (
+                        f"Время: {format_duration(final_duration)} · "
+                        f"прошлый результат: {format_duration(boss_previous_time)}"
+                    )
+                sub_reward = f"Награда за победу: +{60 if boss_speed_bonus else 50} ИЗУМРУДОВ!"
                 screen.blit(FONT_MED.render(sub_info, True, WHITE), (WIDTH // 2 - FONT_MED.size(sub_info)[0] // 2, 325))
-                screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 360))
+                screen.blit(FONT_SMALL.render(speed_text, True, MC_GOLD), (WIDTH // 2 - FONT_SMALL.size(speed_text)[0] // 2, 355))
+                screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 382))
 
                 draw_mc_button(screen, boss_btn_finish, "Посмотреть статистику", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED)
 
@@ -2112,8 +2176,9 @@ async def main():
             error_details = player_data.get("marathon_error_details", [])
             total_errors = player_data.get("marathon_errors", len(error_details))
             helmet_saves = player_data.get("helmet_protections", 0)
-            summary = FONT_BIG.render(
-                f"Ошибок: {total_errors} | Шлем защитил: {helmet_saves} | Серия босса: {boss_max_hp}",
+            final_duration = player_data.get("marathon_elapsed_seconds", marathon_elapsed_seconds)
+            summary = FONT_MED.render(
+                f"Время: {format_duration(final_duration)} | Ошибок: {total_errors} | Шлем: {helmet_saves} | Босс: {boss_max_hp}",
                 True,
                 DARK_TEXT
             )
@@ -2190,8 +2255,11 @@ async def main():
 
                     completed_at = str(record.get("completed_at", "Дата неизвестна")).replace("T", " ")
                     row_title = FONT_MED.render(f"Игра #{record_index + 1} · {completed_at}", True, DARK_TEXT)
+                    record_duration = record.get("duration_seconds")
+                    duration_label = format_duration(record_duration) if record_duration is not None else "—"
+                    bonus_label = " · Рекорд +10" if record.get("speed_bonus") else ""
                     row_info = FONT_SMALL.render(
-                        f"Ошибок: {record.get('errors', 0)} · Шлем защитил: {record.get('helmet_protections', 0)} · Босс: {record.get('boss_hp', 5)}",
+                        f"Время: {duration_label} · Ошибок: {record.get('errors', 0)} · Босс: {record.get('boss_hp', 5)}{bonus_label}",
                         True,
                         (75, 75, 85)
                     )
@@ -2233,8 +2301,11 @@ async def main():
             screen.blit(detail_title, (WIDTH // 2 - detail_title.get_width() // 2, 42))
 
             completed_at = str(record.get("completed_at", "Дата неизвестна")).replace("T", " ")
-            detail_summary = FONT_MED.render(
-                f"{completed_at} | Ошибок: {record.get('errors', 0)} | Шлем: {record.get('helmet_protections', 0)} | Босс: {record.get('boss_hp', 5)}",
+            record_duration = record.get("duration_seconds")
+            duration_label = format_duration(record_duration) if record_duration is not None else "—"
+            bonus_label = " | Бонус скорости: +10" if record.get("speed_bonus") else ""
+            detail_summary = FONT_SMALL.render(
+                f"{completed_at} | Время: {duration_label} | Ошибок: {record.get('errors', 0)} | Босс: {record.get('boss_hp', 5)}{bonus_label}",
                 True,
                 DARK_TEXT
             )
@@ -2472,7 +2543,14 @@ async def main():
 
         pygame.display.flip()
         await asyncio.sleep(0)
-        clock.tick(60)
+        frame_seconds = min(clock.tick(60) / 1000.0, 0.25)
+        timer_is_running = game_state in TIMED_GAME_STATES and not (game_state == "BOSS_BATTLE" and boss_won)
+        if timer_is_running:
+            marathon_elapsed_seconds += frame_seconds
+            timer_save_accumulator += frame_seconds
+            if timer_save_accumulator >= 10.0:
+                persist_marathon_timer()
+                timer_save_accumulator = 0.0
 
 # Запуск игры
 asyncio.run(main())
