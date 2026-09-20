@@ -110,11 +110,11 @@ WORLDS = [
 ]
 
 HELMETS = {
-    "none": {"name": "Без шлема", "cost": 0},
-    "leather": {"name": "Кожаный шлем", "cost": 50, "color": (160, 90, 45)},
-    "iron": {"name": "Железный шлем", "cost": 100, "color": (210, 210, 215)},
-    "diamond": {"name": "Алмазный шлем", "cost": 180, "color": (45, 225, 220)},
-    "netherite": {"name": "Незеритовый шлем", "cost": 300, "color": (65, 55, 65)}
+    "none": {"name": "Без шлема", "cost": 0, "max_durability": 0, "repair_cost": 0},
+    "leather": {"name": "Кожаный шлем", "cost": 50, "color": (160, 90, 45), "max_durability": 3, "repair_cost": 20},
+    "iron": {"name": "Железный шлем", "cost": 100, "color": (210, 210, 215), "max_durability": 6, "repair_cost": 40},
+    "diamond": {"name": "Алмазный шлем", "cost": 180, "color": (45, 225, 220), "max_durability": 10, "repair_cost": 75},
+    "netherite": {"name": "Незеритовый шлем", "cost": 300, "color": (65, 55, 65), "max_durability": 16, "repair_cost": 120}
 }
 
 ARTIFACTS = {
@@ -133,6 +133,56 @@ PLAYER_PROFILES = {
     "Ксения": {"grade": 3, "difficulty": "easy"},
     "Настя": {"grade": 5, "difficulty": "hard"},
 }
+
+MOB_POOLS = [
+    [("creeper", "Крипер"), ("zombie", "Зомби"), ("spider", "Паук")],
+    [("skeleton", "Скелет"), ("husk", "Кадавр"), ("cave_spider", "Пещерный паук")],
+    [("stray", "Зимогор"), ("witch", "Ведьма"), ("snow_golem", "Снежный голем")],
+    [("blaze", "Ифрит"), ("magma_cube", "Магмовый куб"), ("piglin", "Пиглин")],
+    [("enderman", "Эндермен"), ("shulker", "Шалкер"), ("endermite", "Эндермит")],
+]
+
+ROUTE_TEMPLATES = {
+    "easy": [
+        [["+"], ["-"], ["+", "-"]],
+        [["+", "-"], ["+"], ["-"]],
+        [["*"], ["*", "+"]],
+        [["/"], ["*", "/"]],
+        [["+", "-", "*", "/"], ["+", "-", "*"]],
+    ],
+    "hard": [
+        [["+", "-"], ["+"], ["-"]],
+        [["+", "-", "*"], ["+", "*"]],
+        [["*", "/"], ["*", "+", "-"]],
+        [["/", "*", "-"], ["/", "+"]],
+        [["+", "-", "*", "/"], ["*", "/", "+"]],
+    ],
+}
+
+def create_marathon_route(profile_name):
+    difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
+    route = []
+    for world_idx, operation_variants in enumerate(ROUTE_TEMPLATES[difficulty]):
+        mob_id, mob_name = random.choice(MOB_POOLS[world_idx])
+        route.append({
+            "ops": list(random.choice(operation_variants)),
+            "mob_id": mob_id,
+            "mob_name": mob_name,
+        })
+    return route
+
+def create_treasure_tasks():
+    return [world_idx * 10 + random.randint(1, 10) for world_idx in range(5)]
+
+def get_route_world(profile, world_idx):
+    route = profile.get("marathon_route", []) if profile else []
+    if 0 <= world_idx < len(route):
+        return route[world_idx]
+    return {
+        "ops": WORLDS[world_idx]["ops"],
+        "mob_id": WORLDS[world_idx]["mob_id"],
+        "mob_name": WORLDS[world_idx]["mob_name"],
+    }
 
 SAVE_FILE = "mc_math_save.json"
 LAST_PLAYER_FILE = "mc_last_player.txt"
@@ -190,7 +240,10 @@ def get_player(name, apply_daily_bonus=True):
             "task_num": 1, "helmet": "none", "unlocked_helmets": ["none"],
             "upgraded_vehicles": [], "artifacts": [], "totems": 1, "luck_timer": 0,
             "marathon_errors": 0, "marathon_error_details": [], "sound_enabled": True,
-            "game_history": []
+            "game_history": [], "boss_penalty_errors": 0, "helmet_protections": 0,
+            "helmet_durability": {"none": 0},
+            "marathon_route": create_marathon_route(name),
+            "treasure_tasks": create_treasure_tasks()
         }
     else:
         p = profiles[name]
@@ -213,10 +266,51 @@ def get_player(name, apply_daily_bonus=True):
         if "marathon_error_details" not in p: p["marathon_error_details"] = []
         if "sound_enabled" not in p: p["sound_enabled"] = True
         if "game_history" not in p: p["game_history"] = []
+        if "boss_penalty_errors" not in p: p["boss_penalty_errors"] = p.get("marathon_errors", 0)
+        if "helmet_protections" not in p: p["helmet_protections"] = 0
+        if "helmet_durability" not in p: p["helmet_durability"] = {"none": 0}
+        if len(p.get("marathon_route", [])) != len(WORLDS):
+            p["marathon_route"] = create_marathon_route(name)
+        if len(p.get("treasure_tasks", [])) != len(WORLDS):
+            p["treasure_tasks"] = create_treasure_tasks()
+        for helmet_id in p.get("unlocked_helmets", ["none"]):
+            if helmet_id != "none" and helmet_id not in p["helmet_durability"]:
+                p["helmet_durability"][helmet_id] = HELMETS.get(helmet_id, {}).get("max_durability", 0)
+        equipped_helmet = p.get("helmet", "none")
+        if equipped_helmet != "none" and p["helmet_durability"].get(equipped_helmet, 0) <= 0:
+            p["helmet"] = "none"
 
     save_data(profiles)
     set_last_player(name)
     return profiles[name]
+
+def use_helmet_protection(profile):
+    """Consume one durability point and shield the boss-health penalty."""
+    helmet_id = profile.get("helmet", "none")
+    helmet_info = HELMETS.get(helmet_id, HELMETS["none"])
+    if helmet_id == "none" or helmet_info.get("max_durability", 0) <= 0:
+        return None
+
+    durability = profile.setdefault("helmet_durability", {})
+    remaining = durability.get(helmet_id, helmet_info["max_durability"])
+    if remaining <= 0:
+        profile["helmet"] = "none"
+        return None
+
+    remaining -= 1
+    durability[helmet_id] = remaining
+    profile["helmet_protections"] = profile.get("helmet_protections", 0) + 1
+    broken = remaining == 0
+    if broken:
+        profile["helmet"] = "none"
+
+    return {
+        "helmet_id": helmet_id,
+        "helmet_name": helmet_info["name"],
+        "remaining": remaining,
+        "maximum": helmet_info["max_durability"],
+        "broken": broken,
+    }
 
 def make_math_task(ops_list):
     op = random.choice(ops_list)
@@ -465,6 +559,72 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, e_col, (cx + 10, cy - 16, 4, 46))
         pygame.draw.rect(surf, e_col, (cx - 5, cy + 14, 4, 34))
         pygame.draw.rect(surf, e_col, (cx + 1, cy + 14, 4, 34))
+    elif mob_id in ("zombie", "husk", "piglin"):
+        colors = {
+            "zombie": ((75, 155, 80), (55, 95, 145)),
+            "husk": ((175, 145, 85), (115, 85, 45)),
+            "piglin": ((235, 155, 145), (105, 55, 65)),
+        }
+        head_col, body_col = colors[mob_id]
+        if flash_red:
+            head_col = (255, 100, 100)
+        pygame.draw.rect(surf, head_col, (cx - 15, cy - 27, 30, 28))
+        pygame.draw.rect(surf, (25, 25, 25), (cx - 10, cy - 18, 6, 6))
+        pygame.draw.rect(surf, (25, 25, 25), (cx + 4, cy - 18, 6, 6))
+        if mob_id == "piglin":
+            pygame.draw.rect(surf, head_col, (cx - 21, cy - 22, 6, 14))
+            pygame.draw.rect(surf, head_col, (cx + 15, cy - 22, 6, 14))
+        pygame.draw.rect(surf, body_col, (cx - 12, cy + 1, 24, 28))
+        pygame.draw.rect(surf, head_col, (cx - 20, cy + 3, 8, 24))
+        pygame.draw.rect(surf, head_col, (cx + 12, cy + 3, 8, 24))
+        pygame.draw.rect(surf, body_col, (cx - 10, cy + 29, 8, 15))
+        pygame.draw.rect(surf, body_col, (cx + 2, cy + 29, 8, 15))
+    elif mob_id in ("spider", "cave_spider"):
+        body_col = (255, 100, 100) if flash_red else ((45, 45, 50) if mob_id == "spider" else (35, 80, 100))
+        pygame.draw.rect(surf, body_col, (cx - 20, cy - 8, 40, 22), border_radius=5)
+        pygame.draw.rect(surf, body_col, (cx - 14, cy - 22, 28, 18), border_radius=4)
+        eye_col = (220, 35, 35) if mob_id == "spider" else (80, 220, 255)
+        for eye_x in (-9, -3, 4, 10):
+            pygame.draw.rect(surf, eye_col, (cx + eye_x - 2, cy - 17, 4, 4))
+        for side in (-1, 1):
+            for leg_y in (-5, 4, 13):
+                pygame.draw.line(surf, body_col, (cx + side * 14, cy + leg_y), (cx + side * 31, cy + leg_y + 8), 4)
+    elif mob_id == "witch":
+        w_col = (255, 100, 100) if flash_red else (115, 75, 135)
+        pygame.draw.rect(surf, (105, 135, 75), (cx - 14, cy - 22, 28, 26))
+        pygame.draw.rect(surf, (40, 25, 45), (cx - 20, cy - 28, 40, 7))
+        pygame.draw.polygon(surf, (50, 30, 55), [(cx - 13, cy - 28), (cx + 13, cy - 28), (cx, cy - 49)])
+        pygame.draw.rect(surf, (45, 25, 45), (cx - 3, cy - 14, 6, 12))
+        pygame.draw.rect(surf, w_col, (cx - 15, cy + 4, 30, 38))
+    elif mob_id == "snow_golem":
+        snow_col = (255, 140, 140) if flash_red else (235, 245, 250)
+        pygame.draw.circle(surf, snow_col, (cx, cy + 17), 22)
+        pygame.draw.circle(surf, snow_col, (cx, cy - 15), 16)
+        pygame.draw.rect(surf, (235, 110, 25), (cx, cy - 14, 18, 5))
+        pygame.draw.rect(surf, (30, 30, 30), (cx - 9, cy - 21, 4, 4))
+        pygame.draw.rect(surf, (30, 30, 30), (cx + 5, cy - 21, 4, 4))
+        pygame.draw.line(surf, (120, 85, 50), (cx - 18, cy + 4), (cx - 32, cy - 5), 3)
+        pygame.draw.line(surf, (120, 85, 50), (cx + 18, cy + 4), (cx + 32, cy - 5), 3)
+    elif mob_id == "magma_cube":
+        m_col = (255, 130, 130) if flash_red else (110, 25, 20)
+        stretch = abs(int(math.sin(anim_tick * 0.16) * 5))
+        pygame.draw.rect(surf, m_col, (cx - 22, cy - 15 - stretch, 44, 38 + stretch), border_radius=3)
+        pygame.draw.rect(surf, (240, 95, 20), (cx - 22, cy + 7, 44, 6))
+        pygame.draw.rect(surf, (255, 190, 35), (cx - 13, cy - 5, 8, 6))
+        pygame.draw.rect(surf, (255, 190, 35), (cx + 5, cy - 5, 8, 6))
+    elif mob_id == "shulker":
+        shell_col = (255, 120, 150) if flash_red else (150, 90, 170)
+        pygame.draw.rect(surf, shell_col, (cx - 22, cy - 18, 44, 42), border_radius=4)
+        pygame.draw.rect(surf, (95, 55, 115), (cx - 18, cy - 12, 36, 11))
+        pygame.draw.rect(surf, (45, 30, 55), (cx - 12, cy + 2, 24, 17))
+        pygame.draw.rect(surf, (220, 210, 80), (cx - 6, cy + 7, 12, 5))
+    elif mob_id == "endermite":
+        mite_col = (255, 110, 130) if flash_red else (90, 65, 115)
+        for segment in range(4):
+            sx = cx - 24 + segment * 14
+            sy = cy + int(math.sin(anim_tick * 0.2 + segment) * 4)
+            pygame.draw.rect(surf, mite_col, (sx, sy - 7, 16, 14), border_radius=4)
+            pygame.draw.line(surf, (180, 100, 220), (sx + 5, sy - 7), (sx + 1, sy - 14), 2)
 
 def draw_ender_dragon_boss(surf, cx, cy, anim_tick=0, flash_red=False):
     wing_flap = int(math.sin(anim_tick * 0.22) * 24)
@@ -596,7 +756,7 @@ sword_swing_timer = 0
 mob_flash_timer = 0
 
 ten_errors = []
-question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
 message = "Добудь правильный ответ!"
 message_color = DARK_TEXT
 
@@ -674,7 +834,7 @@ def get_boss_max_hp():
         base_hp = 4
     else:
         base_hp = 5
-    return base_hp + (player_data.get("marathon_errors", 0) if player_data else 0)
+    return base_hp + (player_data.get("boss_penalty_errors", 0) if player_data else 0)
 
 def start_mob_encounter():
     global game_state, mob_hp, mob_max_hp, mob_task_str, mob_ans, mob_choices, mob_clean_expr, mob_op
@@ -685,7 +845,8 @@ def start_mob_encounter():
     mob_hp = mob_max_hp
     mob_failed_reset = False
     mob_battle_result_msg = "Реши пример, чтобы нанести удар!"
-    mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
+    route_ops = get_route_world(player_data, current_world_idx)["ops"]
+    mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
 
 def start_boss_battle():
     global game_state, boss_streak, boss_max_hp, boss_task_str, boss_ans, boss_choices, boss_clean_expr, boss_op
@@ -695,7 +856,7 @@ def start_boss_battle():
     boss_max_hp = get_boss_max_hp()
     boss_streak = 0
     boss_won = False
-    error_penalty = player_data.get("marathon_errors", 0) if player_data else 0
+    error_penalty = player_data.get("boss_penalty_errors", 0) if player_data else 0
     boss_msg = f"Нужно {boss_max_hp} верных ответов подряд (ошибки марафона: +{error_penalty})!"
     boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
 
@@ -719,10 +880,14 @@ def reset_entire_marathon():
         p["task_num"] = 1
         p["marathon_errors"] = 0
         p["marathon_error_details"] = []
+        p["boss_penalty_errors"] = 0
+        p["helmet_protections"] = 0
+        p["marathon_route"] = create_marathon_route(player_name)
+        p["treasure_tasks"] = create_treasure_tasks()
         save_data(all_data)
         player_data = p
 
-    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[0]["ops"])
+    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, 0)["ops"])
     message = "Марафон начат сначала! Вперёд!"
     message_color = DARK_TEXT
     game_state = "GAME"
@@ -818,7 +983,7 @@ async def main():
                     hero_y = float(platforms[step_in_world][1] - 24)
                     target_x, target_y = hero_x, hero_y
                     ten_errors = []
-                    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+                    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
                     game_state = "GAME"
                 elif selected_for_stats:
                     player_name = selected_for_stats
@@ -868,6 +1033,9 @@ async def main():
                                     play_sound("correct")
                                     combo_count += 1
                                     gain = 2 if combo_count >= 5 else 1
+                                    is_treasure_task = task_num in p.get("treasure_tasks", [])
+                                    if is_treasure_task:
+                                        gain += 2
                                     if p.get("luck_timer", 0) > 0:
                                         gain *= 2
                                         p["luck_timer"] -= 1
@@ -881,7 +1049,10 @@ async def main():
                                     is_moving = True
                                     move_progress = 0.0
 
-                                    if combo_count >= 5:
+                                    if is_treasure_task:
+                                        message = f"СОКРОВИЩЕ НАЙДЕНО! (+{gain} изумр.)"
+                                        message_color = MC_GOLD
+                                    elif combo_count >= 5:
                                         message = f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+{gain} изумр.)"
                                         message_color = MC_GOLD
                                     else:
@@ -903,29 +1074,43 @@ async def main():
                                         p["task_num"] = task_num
                                         save_data(all_data)
                                         player_data = p
-                                        question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+                                        question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
 
                                 else:
-                                    play_sound("wrong")
                                     wrong_val = choices[i]
                                     p["marathon_errors"] = p.get("marathon_errors", 0) + 1
+                                    helmet_save = use_helmet_protection(p)
+                                    if helmet_save:
+                                        play_sound("hit")
+                                    else:
+                                        play_sound("wrong")
+                                        p["boss_penalty_errors"] = p.get("boss_penalty_errors", 0) + 1
                                     p.setdefault("marathon_error_details", []).append({
                                         "world": current_world_idx + 1,
                                         "task": task_num,
                                         "expr": clean_expr,
                                         "wrong": wrong_val,
-                                        "correct": correct_ans
+                                        "correct": correct_ans,
+                                        "protected_by_helmet": bool(helmet_save)
                                     })
                                     save_data(all_data)
                                     player_data = p
                                     ten_errors.append({
                                         "expr": clean_expr,
                                         "wrong": wrong_val,
-                                        "correct": correct_ans
+                                        "correct": correct_ans,
+                                        "protected_by_helmet": bool(helmet_save)
                                     })
                                     combo_count = 0
-                                    message = "Ой, крипер взорвал ответ! Попробуй другой!"
-                                    message_color = RED
+                                    if helmet_save and helmet_save["broken"]:
+                                        message = f"{helmet_save['helmet_name']} сломался! Ошибка не усилила Дракона."
+                                        message_color = MC_GOLD
+                                    elif helmet_save:
+                                        message = f"Шлем защитил! Прочность: {helmet_save['remaining']} из {helmet_save['maximum']}"
+                                        message_color = MC_GOLD
+                                    else:
+                                        message = "Ой, крипер взорвал ответ! Дракон стал сильнее."
+                                        message_color = RED
                                     spawn_dust(hero_x, hero_y, color=(80, 80, 80))
 
             elif game_state == "CONFIRM_RESET":
@@ -961,6 +1146,8 @@ async def main():
                                         p.setdefault("game_history", []).append({
                                             "completed_at": datetime.now().isoformat(timespec="minutes"),
                                             "errors": p.get("marathon_errors", 0),
+                                            "boss_penalty_errors": p.get("boss_penalty_errors", 0),
+                                            "helmet_protections": p.get("helmet_protections", 0),
                                             "error_details": [dict(item) for item in p.get("marathon_error_details", [])],
                                             "boss_hp": boss_max_hp,
                                             "grade": PLAYER_PROFILES.get(player_name, {}).get("grade")
@@ -1046,7 +1233,7 @@ async def main():
                                 p["task_num"] = task_num
                                 save_data(all_data)
                                 player_data = p
-                                question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+                                question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
                                 message = "Моб победил! Уровень начат заново!"
                                 message_color = RED
                                 game_state = "GAME"
@@ -1056,7 +1243,7 @@ async def main():
                                 p["emeralds"] += 5
                                 save_data(all_data)
                                 player_data = p
-                                question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+                                question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
                                 message = "Моб повержен! Путь открыт!"
                                 message_color = GREEN
                                 game_state = "GAME"
@@ -1077,7 +1264,8 @@ async def main():
                                         mob_battle_result_msg = "ПОБЕДА! Моб повержен! (+5 изумрудов!)"
                                     else:
                                         mob_battle_result_msg = f"Точный удар! Осталось сердец: {mob_hp}"
-                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
+                                        route_ops = get_route_world(p, current_world_idx)["ops"]
+                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
                                 else:
                                     play_sound("wrong")
                                     if p.get("totems", 0) > 0:
@@ -1086,7 +1274,8 @@ async def main():
                                         player_data = p
                                         spawn_hit_sparks(280, 185, is_shield=True)
                                         mob_battle_result_msg = f"Тотем спас от сброса биома! (Осталось: {p['totems']})"
-                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(["+", "-", "*", "/"])
+                                        route_ops = get_route_world(p, current_world_idx)["ops"]
+                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
                                     else:
                                         mob_failed_reset = True
                                         mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!"
@@ -1112,7 +1301,7 @@ async def main():
                             hero_y = float(platforms[0][1] - 24)
                             target_x, target_y = hero_x, hero_y
                             is_moving = False
-                            question_str, correct_ans, choices, current_op, clean_expr = make_math_task(WORLDS[current_world_idx]["ops"])
+                            question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
                             message = "Новый биом открыт! Вперёд!"
                             message_color = DARK_TEXT
                             game_state = "GAME"
@@ -1136,10 +1325,23 @@ async def main():
                             _, _, b_btn = get_shop_row_rects(idx, len(HELMETS))
                             if b_btn.collidepoint(mouse_pos):
                                 if h_id in p.get("unlocked_helmets", ["none"]):
-                                    p["helmet"] = h_id
+                                    current_durability = p.setdefault("helmet_durability", {}).get(
+                                        h_id,
+                                        h_info.get("max_durability", 0)
+                                    )
+                                    if h_id == "none" or current_durability > 0:
+                                        p["helmet"] = h_id
+                                        save_data(all_data)
+                                    elif p["emeralds"] >= h_info.get("repair_cost", 0):
+                                        p["emeralds"] -= h_info["repair_cost"]
+                                        p["helmet_durability"][h_id] = h_info["max_durability"]
+                                        p["helmet"] = h_id
+                                        play_sound("purchase")
+                                        save_data(all_data)
                                 elif p["emeralds"] >= h_info["cost"]:
                                     p["emeralds"] -= h_info["cost"]
                                     p["unlocked_helmets"].append(h_id)
+                                    p.setdefault("helmet_durability", {})[h_id] = h_info.get("max_durability", 0)
                                     p["helmet"] = h_id
                                     play_sound("purchase")
                                     save_data(all_data)
@@ -1192,6 +1394,7 @@ async def main():
             if squash_val > 1.0: squash_val = 1.0
 
         cur_w = WORLDS[current_world_idx]
+        cur_route = get_route_world(player_data, current_world_idx)
         cur_v_type = cur_w["vehicle_type"]
         is_upgraded = cur_v_type in player_data.get("upgraded_vehicles", []) if player_data else False
 
@@ -1288,7 +1491,7 @@ async def main():
                 pygame.draw.rect(screen, MC_GUI_BLACK, b_rect, 2)
                 
                 if i == 5 and step_in_world < 5:
-                    draw_mob(screen, px, py - 35, cur_w["mob_id"], anim_tick=anim_tick)
+                    draw_mob(screen, px, py - 35, cur_route["mob_id"], anim_tick=anim_tick)
                 if current_world_idx == 4 and i == 10 and task_num <= TOTAL_QUESTS:
                     pygame.draw.circle(screen, PURPLE, (px, py - 30), 12)
                     pygame.draw.circle(screen, WHITE, (px, py - 30), 4)
@@ -1312,9 +1515,12 @@ async def main():
             totems_cnt = player_data.get("totems", 0)
             luck_cnt = player_data.get("luck_timer", 0)
             errors_cnt = player_data.get("marathon_errors", 0)
+            equipped_helmet = player_data.get("helmet", "none")
+            helmet_durability = player_data.get("helmet_durability", {}).get(equipped_helmet, 0)
             totem_info = f" | Т: {totems_cnt}" if totems_cnt > 0 else ""
             luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 else ""
             errors_info = f" | О: {errors_cnt}" if errors_cnt > 0 else ""
+            helmet_info = f" | Ш: {helmet_durability}" if equipped_helmet != "none" else ""
 
             bar_box = pygame.Rect(15, 10, 360, 34)
             pygame.draw.rect(screen, MC_GUI_BG, bar_box)
@@ -1323,7 +1529,7 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BLACK, bar_box, 2)
 
             draw_emerald(screen, 32, 27, r=8)
-            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{errors_info} | {player_name}"
+            info_label = f"{player_data['emeralds']}{totem_info}{luck_info}{helmet_info}{errors_info} | {player_name}"
             info_font = FONT_MED if FONT_MED.size(info_label)[0] <= bar_box.width - 40 else FONT_SMALL
             info_txt = info_font.render(info_label, True, DARK_TEXT)
             screen.blit(info_txt, (46, 17))
@@ -1346,13 +1552,16 @@ async def main():
             title_world = FONT_BIG.render(f"{cur_w['name']}  ({v_title})  [{min(task_num, 50)} / {TOTAL_QUESTS}]", True, DARK_TEXT if cur_w["dark_text"] else WHITE)
             screen.blit(title_world, (WIDTH//2 - title_world.get_width()//2, 72))
 
-            if combo_count >= 5:
+            is_treasure_task = task_num in player_data.get("treasure_tasks", [])
+            if is_treasure_task and task_num <= TOTAL_QUESTS:
+                draw_readable_badge(screen, WIDTH // 2, 118, "ЗАДАНИЕ-СОКРОВИЩЕ: +2 ИЗУМРУДА", border_col=(160, 125, 20), text_col=MC_GOLD, font=FONT_SMALL)
+            elif combo_count >= 5:
                 draw_readable_badge(screen, WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
 
             if task_num <= TOTAL_QUESTS:
                 q_box = pygame.Rect(WIDTH//2 - 130, 152, 260, 58)
-                pygame.draw.rect(screen, (160, 115, 65), q_box)
-                pygame.draw.rect(screen, (100, 65, 30), q_box, 3)
+                pygame.draw.rect(screen, (185, 145, 45) if is_treasure_task else (160, 115, 65), q_box)
+                pygame.draw.rect(screen, (255, 220, 70) if is_treasure_task else (100, 65, 30), q_box, 3)
                 q_txt = FONT_TITLE.render(question_str, True, WHITE)
                 screen.blit(q_txt, (q_box.centerx - q_txt.get_width()//2, q_box.centery - q_txt.get_height()//2))
 
@@ -1403,7 +1612,7 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BG, arena_card)
             pygame.draw.rect(screen, MC_GUI_BLACK, arena_card, 3)
 
-            mob_name = cur_w["mob_name"]
+            mob_name = cur_route["mob_name"]
             t_mob = FONT_TITLE.render(f"БИТВА СО СТРАЖЕМ: {mob_name.upper()}!", True, RED)
             screen.blit(t_mob, (WIDTH // 2 - t_mob.get_width() // 2, 38))
 
@@ -1427,7 +1636,7 @@ async def main():
             for h_i in range(mob_max_hp):
                 draw_mc_heart(screen, hearts_start_x + h_i * 26, 95, filled=(h_i < mob_hp))
 
-            draw_mob(screen, 720, 165, cur_w["mob_id"], anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
+            draw_mob(screen, 720, 165, cur_route["mob_id"], anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
 
             for pt in particles:
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
@@ -1537,8 +1746,9 @@ async def main():
 
             error_details = player_data.get("marathon_error_details", [])
             total_errors = player_data.get("marathon_errors", len(error_details))
+            helmet_saves = player_data.get("helmet_protections", 0)
             summary = FONT_BIG.render(
-                f"Пройдено 50 заданий | Ошибок: {total_errors} | Серия против босса: {boss_max_hp}",
+                f"Ошибок: {total_errors} | Шлем защитил: {helmet_saves} | Серия босса: {boss_max_hp}",
                 True,
                 DARK_TEXT
             )
@@ -1557,7 +1767,8 @@ async def main():
                     pygame.draw.rect(screen, MC_GUI_DARK, row, 2)
 
                     error_text = (
-                        f"{item_idx}. Биом {error.get('world', '?')}, задание {error.get('task', '?')}: "
+                        f"{item_idx}. {'[Ш] ' if error.get('protected_by_helmet') else ''}"
+                        f"Биом {error.get('world', '?')}, задание {error.get('task', '?')}: "
                         f"{error.get('expr', '?')} = {error.get('wrong', '?')}; верно: {error.get('correct', '?')}"
                     )
                     error_surf = FONT_MED.render(error_text, True, DARK_TEXT)
@@ -1615,7 +1826,7 @@ async def main():
                     completed_at = str(record.get("completed_at", "Дата неизвестна")).replace("T", " ")
                     row_title = FONT_MED.render(f"Игра #{record_index + 1} · {completed_at}", True, DARK_TEXT)
                     row_info = FONT_SMALL.render(
-                        f"Ошибок: {record.get('errors', 0)} · Ответов подряд для босса: {record.get('boss_hp', 5)}",
+                        f"Ошибок: {record.get('errors', 0)} · Шлем защитил: {record.get('helmet_protections', 0)} · Босс: {record.get('boss_hp', 5)}",
                         True,
                         (75, 75, 85)
                     )
@@ -1658,7 +1869,7 @@ async def main():
 
             completed_at = str(record.get("completed_at", "Дата неизвестна")).replace("T", " ")
             detail_summary = FONT_MED.render(
-                f"{completed_at} | Ошибок: {record.get('errors', 0)} | Босс: {record.get('boss_hp', 5)} ответов подряд",
+                f"{completed_at} | Ошибок: {record.get('errors', 0)} | Шлем: {record.get('helmet_protections', 0)} | Босс: {record.get('boss_hp', 5)}",
                 True,
                 DARK_TEXT
             )
@@ -1675,7 +1886,8 @@ async def main():
                     pygame.draw.rect(screen, (225, 228, 232), row)
                     pygame.draw.rect(screen, MC_GUI_DARK, row, 2)
                     error_text = (
-                        f"{item_idx}. Биом {error.get('world', '?')}, задание {error.get('task', '?')}: "
+                        f"{item_idx}. {'[Ш] ' if error.get('protected_by_helmet') else ''}"
+                        f"Биом {error.get('world', '?')}, задание {error.get('task', '?')}: "
                         f"{error.get('expr', '?')} = {error.get('wrong', '?')}; верно: {error.get('correct', '?')}"
                     )
                     error_surf = FONT_MED.render(error_text, True, DARK_TEXT)
@@ -1773,13 +1985,29 @@ async def main():
                     draw_item_icon(screen, f"helm_{h_id}", slot_rect.centerx, slot_rect.centery)
 
                     screen.blit(FONT_MED.render(h_info["name"], True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 10))
-                    screen.blit(FONT_SMALL.render(f"Цена: {h_info['cost']} изумр." if h_info["cost"] > 0 else "Бесплатно", True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
 
                     is_unlocked = h_id in player_data.get("unlocked_helmets", ["none"])
                     is_equipped = player_data.get("helmet") == h_id
+                    current_durability = player_data.get("helmet_durability", {}).get(
+                        h_id,
+                        h_info.get("max_durability", 0)
+                    )
+
+                    if h_id == "none":
+                        helmet_status = "Бесплатно"
+                    elif not is_unlocked:
+                        helmet_status = f"Цена: {h_info['cost']} · прочность: {h_info['max_durability']}"
+                    elif current_durability <= 0:
+                        helmet_status = f"Сломан · ремонт: {h_info['repair_cost']} изумр."
+                    else:
+                        helmet_status = f"Прочность: {current_durability} из {h_info['max_durability']}"
+                    screen.blit(FONT_SMALL.render(helmet_status, True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
 
                     if is_equipped:
                         draw_mc_button(screen, b_btn, "Надето", False, False, font_pref=FONT_SMALL)
+                    elif is_unlocked and current_durability <= 0 and h_id != "none":
+                        can_repair = player_data["emeralds"] >= h_info["repair_cost"]
+                        draw_mc_button(screen, b_btn, f"Ремонт {h_info['repair_cost']}", b_btn.collidepoint(mouse_pos) and can_repair, can_repair, font_pref=FONT_SMALL)
                     elif is_unlocked:
                         draw_mc_button(screen, b_btn, "Надеть", b_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
                     else:
