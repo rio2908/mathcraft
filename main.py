@@ -134,6 +134,25 @@ PLAYER_PROFILES = {
     "Настя": {"grade": 5, "difficulty": "hard"},
 }
 
+LOGIC_TASKS = {
+    "easy": [
+        {"question": "Продолжи ряд: 2, 4, 6, 8, ?", "choices": [9, 10, 12], "answer": 10},
+        {"question": "У трёх кошек по 2 уха. Сколько ушей?", "choices": [5, 6, 8], "answer": 6},
+        {"question": "Сегодня среда. Какой день будет через 2 дня?", "choices": ["Пятница", "Суббота", "Вторник"], "answer": "Пятница"},
+        {"question": "Что тяжелее: 1 кг железа или 1 кг ваты?", "choices": ["Железо", "Одинаково", "Вата"], "answer": "Одинаково"},
+        {"question": "Продолжи: круг, квадрат, круг, квадрат, ...", "choices": ["Круг", "Треугольник", "Квадрат"], "answer": "Круг"},
+        {"question": "В комнате 4 угла. В каждом углу кот. Сколько котов?", "choices": [4, 8, 16], "answer": 4},
+    ],
+    "hard": [
+        {"question": "Продолжи ряд: 3, 6, 12, 24, ?", "choices": [36, 42, 48], "answer": 48},
+        {"question": "Два отца и два сына нашли 3 ключа — по одному каждому. Сколько их?", "choices": [3, 4, 6], "answer": 3},
+        {"question": "Все драконы летают. Гоша — дракон. Что верно?", "choices": ["Гоша летает", "Гоша плавает", "Неизвестно"], "answer": "Гоша летает"},
+        {"question": "Какое число лишнее: 2, 4, 7, 8, 10?", "choices": [2, 7, 10], "answer": 7},
+        {"question": "У Ани больше монет, чем у Веры, а у Веры больше, чем у Лены. У кого меньше?", "choices": ["У Ани", "У Веры", "У Лены"], "answer": "У Лены"},
+        {"question": "Продолжи ряд: 1, 4, 9, 16, ?", "choices": [20, 25, 32], "answer": 25},
+    ],
+}
+
 MOB_POOLS = [
     [("creeper", "Крипер"), ("zombie", "Зомби"), ("spider", "Паук")],
     [("skeleton", "Скелет"), ("husk", "Кадавр"), ("cave_spider", "Пещерный паук")],
@@ -168,11 +187,23 @@ def create_marathon_route(profile_name):
             "ops": list(random.choice(operation_variants)),
             "mob_id": mob_id,
             "mob_name": mob_name,
+            "mob_step": random.randint(3, 8),
         })
     return route
 
 def create_treasure_tasks():
     return [world_idx * 10 + random.randint(1, 10) for world_idx in range(5)]
+
+def create_sage_task(route, start_at=1):
+    occupied = {
+        world_idx * 10 + world.get("mob_step", 5)
+        for world_idx, world in enumerate(route)
+    }
+    candidates = [
+        task for task in range(max(2, start_at), TOTAL_QUESTS)
+        if task % STEPS_PER_WORLD != 0 and task not in occupied
+    ]
+    return random.choice(candidates) if candidates else None
 
 def get_route_world(profile, world_idx):
     route = profile.get("marathon_route", []) if profile else []
@@ -235,6 +266,7 @@ def get_player(name, apply_daily_bonus=True):
     name = name.strip()
     today_str = date.today().isoformat()
     if name not in profiles:
+        new_route = create_marathon_route(name)
         profiles[name] = {
             "emeralds": 10, "streak": 1, "last_date": today_str,
             "task_num": 1, "helmet": "none", "unlocked_helmets": ["none"],
@@ -242,8 +274,11 @@ def get_player(name, apply_daily_bonus=True):
             "marathon_errors": 0, "marathon_error_details": [], "sound_enabled": True,
             "game_history": [], "boss_penalty_errors": 0, "helmet_protections": 0,
             "helmet_durability": {"none": 0},
-            "marathon_route": create_marathon_route(name),
-            "treasure_tasks": create_treasure_tasks()
+            "marathon_route": new_route,
+            "treasure_tasks": create_treasure_tasks(),
+            "sage_task": create_sage_task(new_route),
+            "sage_completed": False,
+            "sage_artifact": None,
         }
     else:
         p = profiles[name]
@@ -271,8 +306,15 @@ def get_player(name, apply_daily_bonus=True):
         if "helmet_durability" not in p: p["helmet_durability"] = {"none": 0}
         if len(p.get("marathon_route", [])) != len(WORLDS):
             p["marathon_route"] = create_marathon_route(name)
+        for world in p["marathon_route"]:
+            if "mob_step" not in world:
+                world["mob_step"] = random.randint(3, 8)
         if len(p.get("treasure_tasks", [])) != len(WORLDS):
             p["treasure_tasks"] = create_treasure_tasks()
+        if "sage_task" not in p:
+            p["sage_task"] = create_sage_task(p["marathon_route"], p.get("task_num", 1))
+        if "sage_completed" not in p: p["sage_completed"] = False
+        if "sage_artifact" not in p: p["sage_artifact"] = None
         for helmet_id in p.get("unlocked_helmets", ["none"]):
             if helmet_id != "none" and helmet_id not in p["helmet_durability"]:
                 p["helmet_durability"][helmet_id] = HELMETS.get(helmet_id, {}).get("max_durability", 0)
@@ -355,6 +397,46 @@ def make_math_task(ops_list):
     v_list = list(variants)
     random.shuffle(v_list)
     return f"{a} {sym} {b} = ?", ans, v_list, op, f"{a} {sym} {b}"
+
+def make_review_task(error_detail):
+    answer = error_detail["correct"]
+    variants = {answer}
+    wrong_answer = error_detail.get("wrong")
+    if isinstance(wrong_answer, int) and wrong_answer != answer:
+        variants.add(wrong_answer)
+    while len(variants) < 3:
+        candidate = answer + random.choice([-3, -2, -1, 1, 2, 3])
+        if candidate >= 0:
+            variants.add(candidate)
+    choices = list(variants)
+    random.shuffle(choices)
+    expression = error_detail["expr"]
+    return f"{expression} = ?", answer, choices, "review", expression
+
+def pick_logic_task(profile_name, previous_question=None):
+    difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
+    available = [task for task in LOGIC_TASKS[difficulty] if task["question"] != previous_question]
+    task = random.choice(available or LOGIC_TASKS[difficulty])
+    choices = list(task["choices"])
+    random.shuffle(choices)
+    return task["question"], task["answer"], choices
+
+def draw_centered_wrapped_text(surf, text, font, color, center_x, top_y, max_width, line_gap=4):
+    words = text.split()
+    lines = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and font.size(candidate)[0] > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    for line_idx, line in enumerate(lines):
+        rendered = font.render(line, True, color)
+        surf.blit(rendered, (center_x - rendered.get_width() // 2, top_y + line_idx * (font.get_height() + line_gap)))
 
 def draw_mc_button(surf, rect, text, hovered=False, active=True, font_pref=None, custom_bg=None):
     if custom_bg:
@@ -626,6 +708,26 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
             pygame.draw.rect(surf, mite_col, (sx, sy - 7, 16, 14), border_radius=4)
             pygame.draw.line(surf, (180, 100, 220), (sx + 5, sy - 7), (sx + 1, sy - 14), 2)
 
+def draw_sage_fouras(surf, cx, cy, anim_tick=0):
+    """Original pixel-art sage inspired by a mysterious fortress riddler."""
+    bob = int(math.sin(anim_tick * 0.08) * 2)
+    cy += bob
+    robe = (75, 65, 105)
+    robe_light = (105, 90, 135)
+    skin = (220, 175, 135)
+    hair = (225, 225, 215)
+    pygame.draw.polygon(surf, robe, [(cx - 24, cy + 42), (cx + 24, cy + 42), (cx + 14, cy - 2), (cx - 14, cy - 2)])
+    pygame.draw.rect(surf, robe_light, (cx - 8, cy + 8, 16, 28))
+    pygame.draw.rect(surf, skin, (cx - 16, cy - 30, 32, 30))
+    pygame.draw.rect(surf, hair, (cx - 19, cy - 34, 38, 9))
+    pygame.draw.rect(surf, hair, (cx - 20, cy - 27, 7, 25))
+    pygame.draw.rect(surf, hair, (cx + 13, cy - 27, 7, 25))
+    pygame.draw.rect(surf, (45, 45, 55), (cx - 10, cy - 19, 5, 4))
+    pygame.draw.rect(surf, (45, 45, 55), (cx + 5, cy - 19, 5, 4))
+    pygame.draw.polygon(surf, hair, [(cx - 13, cy - 4), (cx + 13, cy - 4), (cx, cy + 20)])
+    pygame.draw.line(surf, (120, 80, 45), (cx + 22, cy - 2), (cx + 29, cy + 43), 4)
+    pygame.draw.circle(surf, MC_GOLD, (cx + 22, cy - 5), 5)
+
 def draw_ender_dragon_boss(surf, cx, cy, anim_tick=0, flash_red=False):
     wing_flap = int(math.sin(anim_tick * 0.22) * 24)
     d_col = (255, 100, 100) if flash_red else (20, 20, 24)
@@ -781,6 +883,16 @@ boss_op = "+"
 boss_clean_expr = ""
 boss_msg = "Победи Дракона!"
 boss_won = False
+boss_review_queue = []
+boss_is_review = False
+
+# Переменные Старца Фура
+sage_question = ""
+sage_answer = None
+sage_choices = []
+sage_msg = "Отгадай загадку с первой попытки!"
+sage_won = False
+sage_reward_name = ""
 stats_page = 0
 STATS_PER_PAGE = 6
 history_page = 0
@@ -850,15 +962,37 @@ def start_mob_encounter():
 
 def start_boss_battle():
     global game_state, boss_streak, boss_max_hp, boss_task_str, boss_ans, boss_choices, boss_clean_expr, boss_op
-    global boss_msg, boss_won
+    global boss_msg, boss_won, boss_review_queue
 
     game_state = "BOSS_BATTLE"
     boss_max_hp = get_boss_max_hp()
     boss_streak = 0
     boss_won = False
+    boss_review_queue = [
+        dict(error) for error in player_data.get("marathon_error_details", [])
+    ]
     error_penalty = player_data.get("boss_penalty_errors", 0) if player_data else 0
     boss_msg = f"Нужно {boss_max_hp} верных ответов подряд (ошибки марафона: +{error_penalty})!"
-    boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+    set_next_boss_task()
+
+def set_next_boss_task():
+    global boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr, boss_is_review
+    if boss_streak < len(boss_review_queue):
+        boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_review_task(
+            boss_review_queue[boss_streak]
+        )
+        boss_is_review = True
+    else:
+        boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+        boss_is_review = False
+
+def start_sage_encounter():
+    global game_state, sage_question, sage_answer, sage_choices, sage_msg, sage_won, sage_reward_name
+    game_state = "SAGE_CHALLENGE"
+    sage_question, sage_answer, sage_choices = pick_logic_task(player_name)
+    sage_msg = "Одна попытка на загадку. Ошибёшься — получишь новую!"
+    sage_won = False
+    sage_reward_name = ""
 
 def reset_entire_marathon():
     global task_num, step_in_world, current_world_idx, hero_x, hero_y, target_x, target_y, is_moving
@@ -884,6 +1018,9 @@ def reset_entire_marathon():
         p["helmet_protections"] = 0
         p["marathon_route"] = create_marathon_route(player_name)
         p["treasure_tasks"] = create_treasure_tasks()
+        p["sage_task"] = create_sage_task(p["marathon_route"])
+        p["sage_completed"] = False
+        p["sage_artifact"] = None
         save_data(all_data)
         player_data = p
 
@@ -898,6 +1035,8 @@ start_btn_x = (WIDTH - (3 * btn_w + 40)) // 2
 answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 235, btn_w, btn_h) for i in range(3)]
 mob_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
 boss_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, btn_h) for i in range(3)]
+sage_answer_buttons = [pygame.Rect(130 + i * 250, 370, 230, 58) for i in range(3)]
+sage_continue_btn = pygame.Rect(WIDTH // 2 - 145, 470, 290, 48)
 
 nav_workbench = pygame.Rect(WIDTH - 505, 10, 105, 34)
 nav_players = pygame.Rect(WIDTH - 395, 10, 85, 34)
@@ -943,6 +1082,8 @@ async def main():
     global mob_battle_result_msg, mob_failed_reset, boss_streak, boss_task_str, boss_ans, boss_choices
     global boss_op, boss_clean_expr, boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
     global history_page, history_selected_index
+    global boss_review_queue, boss_is_review
+    global sage_question, sage_answer, sage_choices, sage_msg, sage_won, sage_reward_name
 
     running = True
 
@@ -985,6 +1126,12 @@ async def main():
                     ten_errors = []
                     question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
                     game_state = "GAME"
+                    if (
+                        not player_data.get("sage_completed", False)
+                        and player_data.get("sage_task") is not None
+                        and task_num == player_data["sage_task"] + 1
+                    ):
+                        start_sage_encounter()
                 elif selected_for_stats:
                     player_name = selected_for_stats
                     player_data = get_player(player_name, apply_daily_bonus=False)
@@ -1120,6 +1267,44 @@ async def main():
                     elif confirm_reset_no.collidepoint(mouse_pos):
                         game_state = "GAME"
 
+            elif game_state == "SAGE_CHALLENGE":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if sage_won:
+                        if sage_continue_btn.collidepoint(mouse_pos):
+                            game_state = "GAME"
+                    else:
+                        for i, rect in enumerate(sage_answer_buttons):
+                            if rect.collidepoint(mouse_pos):
+                                if sage_choices[i] == sage_answer:
+                                    all_data = load_data()
+                                    p = all_data[player_name.strip()]
+                                    available_artifacts = [
+                                        artifact_id for artifact_id in ARTIFACTS
+                                        if artifact_id not in p.get("artifacts", [])
+                                    ]
+                                    if available_artifacts:
+                                        reward_id = random.choice(available_artifacts)
+                                        p.setdefault("artifacts", []).append(reward_id)
+                                        p["sage_artifact"] = reward_id
+                                        sage_reward_name = ARTIFACTS[reward_id]["name"]
+                                    else:
+                                        p["sage_artifact"] = "collection_complete"
+                                        sage_reward_name = "Все артефакты уже собраны"
+                                    p["sage_completed"] = True
+                                    save_data(all_data)
+                                    player_data = p
+                                    sage_won = True
+                                    sage_msg = f"Верно! Награда: {sage_reward_name}"
+                                    play_sound("victory")
+                                else:
+                                    previous_question = sage_question
+                                    sage_question, sage_answer, sage_choices = pick_logic_task(
+                                        player_name, previous_question
+                                    )
+                                    sage_msg = "Ответ неверный — эта загадка потеряна. Вот новая!"
+                                    play_sound("wrong")
+                                break
+
             elif game_state == "BOSS_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if boss_won:
@@ -1150,14 +1335,15 @@ async def main():
                                             "helmet_protections": p.get("helmet_protections", 0),
                                             "error_details": [dict(item) for item in p.get("marathon_error_details", [])],
                                             "boss_hp": boss_max_hp,
-                                            "grade": PLAYER_PROFILES.get(player_name, {}).get("grade")
+                                            "grade": PLAYER_PROFILES.get(player_name, {}).get("grade"),
+                                            "sage_artifact": p.get("sage_artifact"),
                                         })
                                         save_data(all_data)
                                         player_data = p
                                     else:
                                         play_sound("hit")
                                         boss_msg = f"Точный удар! Серия: {boss_streak} из {boss_max_hp}!"
-                                        boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+                                        set_next_boss_task()
                                 else:
                                     play_sound("wrong")
                                     if p.get("totems", 0) > 0:
@@ -1166,12 +1352,12 @@ async def main():
                                         player_data = p
                                         spawn_hit_sparks(280, 185, is_shield=True)
                                         boss_msg = f"Тотем спас от ошибки! Осталось тотемов: {p['totems']}"
-                                        boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+                                        set_next_boss_task()
                                     else:
                                         boss_streak = 0
                                         boss_msg = f"ОШИБКА (было {boss_ans})! Серия ударов сброшена!"
                                         spawn_dust(280, 190, color=(220, 50, 50))
-                                        boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
+                                        set_next_boss_task()
 
             elif game_state == "FINAL_STATS":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1412,7 +1598,12 @@ async def main():
 
                 if task_num > TOTAL_QUESTS:
                     start_boss_battle()
-                elif step_in_world == 5:
+                elif (
+                    not player_data.get("sage_completed", False)
+                    and player_data.get("sage_task") == task_num - 1
+                ):
+                    start_sage_encounter()
+                elif step_in_world == cur_route.get("mob_step", 5):
                     start_mob_encounter()
                 elif (task_num - 1) % STEPS_PER_WORLD == 0 and (task_num - 1) > 0:
                     game_state = "REVIEW"
@@ -1490,8 +1681,17 @@ async def main():
                 pygame.draw.rect(screen, cur_w["top_plat"], (b_rect.x, b_rect.y, b_rect.width, 7))
                 pygame.draw.rect(screen, MC_GUI_BLACK, b_rect, 2)
                 
-                if i == 5 and step_in_world < 5:
+                mob_step = cur_route.get("mob_step", 5)
+                if i == mob_step and step_in_world < mob_step:
                     draw_mob(screen, px, py - 35, cur_route["mob_id"], anim_tick=anim_tick)
+                sage_task = player_data.get("sage_task")
+                sage_step = sage_task - current_world_idx * STEPS_PER_WORLD if sage_task is not None else -1
+                if (
+                    not player_data.get("sage_completed", False)
+                    and i == sage_step
+                    and step_in_world < sage_step
+                ):
+                    draw_sage_fouras(screen, px, py - 42, anim_tick=anim_tick)
                 if current_world_idx == 4 and i == 10 and task_num <= TOTAL_QUESTS:
                     pygame.draw.circle(screen, PURPLE, (px, py - 30), 12)
                     pygame.draw.circle(screen, WHITE, (px, py - 30), 4)
@@ -1671,6 +1871,52 @@ async def main():
                 btn_txt = "Продолжить путь!" if mob_hp == 0 else "Попробовать биом сначала"
                 draw_mc_button(screen, mob_btn_continue, btn_txt, mob_btn_continue.collidepoint(mouse_pos), font_pref=FONT_MED)
 
+        elif game_state == "SAGE_CHALLENGE":
+            screen.fill((25, 32, 48))
+            pygame.draw.rect(screen, (70, 75, 90), (0, 430, WIDTH, 170))
+            for tower_x in (90, 790):
+                pygame.draw.rect(screen, (105, 105, 115), (tower_x, 70, 120, 360))
+                for stone_y in range(90, 420, 45):
+                    pygame.draw.line(screen, (75, 75, 85), (tower_x, stone_y), (tower_x + 120, stone_y), 2)
+                pygame.draw.rect(screen, (45, 45, 55), (tower_x + 38, 130, 44, 80), border_radius=18)
+
+            card = pygame.Rect(210, 25, 580, 535)
+            pygame.draw.rect(screen, (198, 198, 198), card)
+            pygame.draw.rect(screen, MC_GOLD, card, 4)
+            title = FONT_TITLE.render("ИСПЫТАНИЕ СТАРЦА ФУРА", True, (75, 55, 100))
+            screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 48))
+            draw_sage_fouras(screen, WIDTH // 2, 155, anim_tick)
+
+            if not sage_won:
+                draw_centered_wrapped_text(
+                    screen, sage_question, FONT_BIG, DARK_TEXT,
+                    WIDTH // 2, 225, 520, 5
+                )
+                for i, rect in enumerate(sage_answer_buttons):
+                    draw_mc_button(
+                        screen, rect, str(sage_choices[i]), rect.collidepoint(mouse_pos),
+                        font_pref=FONT_MED, custom_bg=(90, 75, 125)
+                    )
+                draw_readable_badge(
+                    screen, WIDTH // 2, 455, sage_msg,
+                    border_col=MC_GOLD, text_col=WHITE, font=FONT_SMALL
+                )
+            else:
+                reward_box = pygame.Rect(WIDTH // 2 - 250, 245, 500, 150)
+                pygame.draw.rect(screen, (245, 235, 190), reward_box, border_radius=8)
+                pygame.draw.rect(screen, MC_GOLD, reward_box, 3, border_radius=8)
+                reward_title = FONT_TITLE.render("ЗАГАДКА РАЗГАДАНА!", True, GREEN)
+                screen.blit(reward_title, (WIDTH // 2 - reward_title.get_width() // 2, 270))
+                draw_centered_wrapped_text(
+                    screen, f"Старец вручает тебе: {sage_reward_name}", FONT_BIG,
+                    (85, 60, 25), WIDTH // 2, 320, 450
+                )
+                draw_mc_button(
+                    screen, sage_continue_btn, "Забрать артефакт и продолжить",
+                    sage_continue_btn.collidepoint(mouse_pos), font_pref=FONT_MED,
+                    custom_bg=(65, 145, 75)
+                )
+
         elif game_state == "BOSS_BATTLE":
             screen.fill((15, 10, 25))
             arena_card = pygame.Rect(120, 20, 760, 560)
@@ -1706,6 +1952,11 @@ async def main():
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
             if not boss_won:
+                if boss_is_review:
+                    draw_readable_badge(
+                        screen, WIDTH // 2, 240, "ПОВТОР ОШИБКИ ИЗ МАРАФОНА",
+                        border_col=(210, 80, 80), text_col=(255, 210, 190), font=FONT_SMALL
+                    )
                 q_boss_box = pygame.Rect(WIDTH // 2 - 140, 260, 280, 62)
                 pygame.draw.rect(screen, (160, 115, 65), q_boss_box)
                 pygame.draw.rect(screen, (100, 65, 30), q_boss_box, 3)
