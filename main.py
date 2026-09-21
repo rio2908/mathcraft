@@ -102,11 +102,11 @@ GREEN = (35, 175, 60)
 PURPLE = (180, 50, 240)
 
 WORLDS = [
-    {"name": "1. Равнины Обычного Мира", "sky": (140, 205, 255), "ground": (85, 140, 50), "plat": (115, 80, 50), "top_plat": (105, 175, 55), "dark_text": True, "ops": ["+", "-"], "vehicle_type": "pig", "v_name": "Свинка", "upg_name": "Бронированная свинка", "upg_cost": 70, "mob_id": "creeper", "mob_name": "Крипер"},
-    {"name": "2. Жаркая Пустыня", "sky": (245, 215, 160), "ground": (210, 165, 85), "plat": (180, 130, 60), "top_plat": (225, 185, 100), "dark_text": True, "ops": ["-", "+"], "vehicle_type": "llama", "v_name": "Лама", "upg_name": "Боевая Лама в попоне", "upg_cost": 110, "mob_id": "skeleton", "mob_name": "Скелет с луком"},
-    {"name": "3. Ледяные Равнины", "sky": (195, 225, 245), "ground": (220, 235, 245), "plat": (140, 190, 230), "top_plat": (175, 220, 255), "dark_text": True, "ops": ["*"], "vehicle_type": "boat", "v_name": "Лодка на льду", "upg_name": "Лодка с сундуком", "upg_cost": 160, "mob_id": "stray", "mob_name": "Зимогор"},
-    {"name": "4. Незер (Нижний Мир)", "sky": (65, 15, 15), "ground": (90, 20, 20), "plat": (50, 10, 10), "top_plat": (240, 90, 20), "dark_text": False, "ops": ["/"], "vehicle_type": "strider", "v_name": "Страйдер по лаве", "upg_name": "Страйдер в седле", "upg_cost": 220, "mob_id": "blaze", "mob_name": "Ифрит Незера"},
-    {"name": "5. Эндер Мир (Край)", "sky": (15, 10, 25), "ground": (30, 25, 45), "plat": (50, 45, 70), "top_plat": (230, 230, 175), "dark_text": False, "ops": ["+", "-", "*", "/"], "vehicle_type": "dragon", "v_name": "Элитры", "upg_name": "Дракон Края", "upg_cost": 300, "mob_id": "enderman", "mob_name": "Эндермен"}
+    {"name": "1. Равнины Обычного Мира", "sky": (140, 205, 255), "ground": (85, 140, 50), "plat": (115, 80, 50), "top_plat": (105, 175, 55), "dark_text": True, "ops": ["+", "-"], "vehicle_type": "pig", "v_name": "Свинка", "v_cost": 40, "upg_name": "Бронированная свинка", "upg_cost": 70, "mob_id": "creeper", "mob_name": "Крипер"},
+    {"name": "2. Жаркая Пустыня", "sky": (245, 215, 160), "ground": (210, 165, 85), "plat": (180, 130, 60), "top_plat": (225, 185, 100), "dark_text": True, "ops": ["-", "+"], "vehicle_type": "llama", "v_name": "Лама", "v_cost": 70, "upg_name": "Боевая Лама в попоне", "upg_cost": 110, "mob_id": "skeleton", "mob_name": "Скелет с луком"},
+    {"name": "3. Ледяные Равнины", "sky": (195, 225, 245), "ground": (220, 235, 245), "plat": (140, 190, 230), "top_plat": (175, 220, 255), "dark_text": True, "ops": ["*"], "vehicle_type": "boat", "v_name": "Лодка на льду", "v_cost": 100, "upg_name": "Лодка с сундуком", "upg_cost": 160, "mob_id": "stray", "mob_name": "Зимогор"},
+    {"name": "4. Незер (Нижний Мир)", "sky": (65, 15, 15), "ground": (90, 20, 20), "plat": (50, 10, 10), "top_plat": (240, 90, 20), "dark_text": False, "ops": ["/"], "vehicle_type": "strider", "v_name": "Страйдер по лаве", "v_cost": 140, "upg_name": "Страйдер в седле", "upg_cost": 220, "mob_id": "blaze", "mob_name": "Ифрит Незера"},
+    {"name": "5. Эндер Мир (Край)", "sky": (15, 10, 25), "ground": (30, 25, 45), "plat": (50, 45, 70), "top_plat": (230, 230, 175), "dark_text": False, "ops": ["+", "-", "*", "/"], "vehicle_type": "dragon", "v_name": "Элитры", "v_cost": 200, "upg_name": "Дракон Края", "upg_cost": 300, "mob_id": "enderman", "mob_name": "Эндермен"}
 ]
 
 HELMETS = {
@@ -167,7 +167,7 @@ HELP_PAGES = [
         "lines": [
             "Выбери Ксению (3 класс) или Настю (5 класс).",
             "Пройди 5 миров и реши всего 50 примеров.",
-            "Нажимай на один из трёх ответов под примером.",
+            "На каждом островке реши задачу — и только потом иди дальше.",
             "В каждом новом марафоне задания и стражи меняются.",
             "Золотое задание-сокровище приносит больше изумрудов.",
             "Кнопка «Игроки» возвращает к выбору героя и статистике.",
@@ -192,7 +192,7 @@ HELP_PAGES = [
             "Тотем спасает от ошибки у стража или Дракона.",
             "Зелье удачи удваивает награды следующих 10 примеров.",
             "Волк снимает мобу 2 жизни, но убегает после 2 ошибок.",
-            "Транспорт можно улучшать — герой будет выглядеть круче.",
+            "Купленный транспорт ускоряет путь и помогает ставить рекорд.",
         ],
     },
     {
@@ -325,7 +325,7 @@ def get_player(name, apply_daily_bonus=True):
         profiles[name] = {
             "emeralds": 10, "streak": 1, "last_date": today_str,
             "task_num": 1, "helmet": "none", "unlocked_helmets": ["none"],
-            "upgraded_vehicles": [], "artifacts": [], "totems": 1, "luck_timer": 0,
+            "owned_vehicles": [], "upgraded_vehicles": [], "artifacts": [], "totems": 1, "luck_timer": 0,
             "marathon_errors": 0, "marathon_error_details": [], "sound_enabled": True,
             "game_history": [], "boss_penalty_errors": 0, "helmet_protections": 0,
             "helmet_durability": {"none": 0},
@@ -338,6 +338,7 @@ def get_player(name, apply_daily_bonus=True):
             "pet_errors": 0,
             "pets_lost": 0,
             "marathon_elapsed_seconds": 0,
+            "defeated_mob_worlds": [],
         }
     else:
         p = profiles[name]
@@ -353,6 +354,8 @@ def get_player(name, apply_daily_bonus=True):
                 p["last_date"] = today_str
         if "task_num" not in p: p["task_num"] = 1
         if "upgraded_vehicles" not in p: p["upgraded_vehicles"] = []
+        if "owned_vehicles" not in p:
+            p["owned_vehicles"] = list(p["upgraded_vehicles"])
         if "artifacts" not in p: p["artifacts"] = []
         if "totems" not in p: p["totems"] = 1
         if "luck_timer" not in p: p["luck_timer"] = 0
@@ -378,6 +381,7 @@ def get_player(name, apply_daily_bonus=True):
         if "pet_errors" not in p: p["pet_errors"] = 0
         if "pets_lost" not in p: p["pets_lost"] = 0
         if "marathon_elapsed_seconds" not in p: p["marathon_elapsed_seconds"] = 0
+        if "defeated_mob_worlds" not in p: p["defeated_mob_worlds"] = []
         for helmet_id in p.get("unlocked_helmets", ["none"]):
             if helmet_id != "none" and helmet_id not in p["helmet_durability"]:
                 p["helmet_durability"][helmet_id] = HELMETS.get(helmet_id, {}).get("max_durability", 0)
@@ -940,6 +944,13 @@ TIMED_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE"}
 base_y = 490
 platforms = [(95 + i * ((WIDTH - 190) // STEPS_PER_WORLD), base_y) for i in range(STEPS_PER_WORLD + 1)]
 
+def get_task_position(task_number):
+    if task_number > TOTAL_QUESTS:
+        return len(WORLDS) - 1, STEPS_PER_WORLD
+    world_idx = max(0, (task_number - 1) // STEPS_PER_WORLD)
+    step = ((task_number - 1) % STEPS_PER_WORLD) + 1
+    return min(world_idx, len(WORLDS) - 1), step
+
 last_player_name = get_last_player()
 player_name = last_player_name if last_player_name in PLAYER_PROFILES else "Ксения"
 player_data = get_player(player_name, apply_daily_bonus=False)
@@ -950,8 +961,7 @@ task_num = player_data.get("task_num", 1) if player_data else 1
 marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0)) if player_data else 0.0
 timer_save_accumulator = 0.0
 combo_count = 0
-current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
-step_in_world = (task_num - 1) % STEPS_PER_WORLD
+current_world_idx, step_in_world = get_task_position(task_num)
 
 hero_x = float(platforms[step_in_world][0])
 hero_y = float(platforms[step_in_world][1] - 24)
@@ -1096,9 +1106,13 @@ def start_boss_battle():
     boss_max_hp = get_boss_max_hp()
     boss_streak = 0
     boss_won = False
-    boss_review_queue = [
-        dict(error) for error in player_data.get("marathon_error_details", [])
-    ]
+    boss_review_queue = []
+    seen_expressions = set()
+    for error in player_data.get("marathon_error_details", []):
+        error_key = (error.get("expr"), error.get("correct"))
+        if error_key not in seen_expressions:
+            seen_expressions.add(error_key)
+            boss_review_queue.append(dict(error))
     error_penalty = player_data.get("boss_penalty_errors", 0) if player_data else 0
     boss_msg = f"Нужно {boss_max_hp} верных ответов подряд (ошибки марафона: +{error_penalty})!"
     set_next_boss_task()
@@ -1129,10 +1143,9 @@ def reset_entire_marathon():
     global player_data, marathon_elapsed_seconds, timer_save_accumulator
 
     task_num = 1
-    step_in_world = 0
-    current_world_idx = 0
-    hero_x = float(platforms[0][0])
-    hero_y = float(platforms[0][1] - 24)
+    current_world_idx, step_in_world = get_task_position(task_num)
+    hero_x = float(platforms[step_in_world][0])
+    hero_y = float(platforms[step_in_world][1] - 24)
     target_x, target_y = hero_x, hero_y
     is_moving = False
     ten_errors = []
@@ -1153,6 +1166,7 @@ def reset_entire_marathon():
         p["sage_completed"] = False
         p["sage_artifact"] = None
         p["marathon_elapsed_seconds"] = 0
+        p["defeated_mob_worlds"] = []
         save_data(all_data)
         player_data = p
 
@@ -1263,8 +1277,7 @@ async def main():
                     marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0))
                     timer_save_accumulator = 0.0
                     task_num = player_data.get("task_num", 1)
-                    current_world_idx = min((task_num - 1) // STEPS_PER_WORLD, 4)
-                    step_in_world = (task_num - 1) % STEPS_PER_WORLD
+                    current_world_idx, step_in_world = get_task_position(task_num)
                     hero_x = float(platforms[step_in_world][0])
                     hero_y = float(platforms[step_in_world][1] - 24)
                     target_x, target_y = hero_x, hero_y
@@ -1274,9 +1287,14 @@ async def main():
                     if (
                         not player_data.get("sage_completed", False)
                         and player_data.get("sage_task") is not None
-                        and task_num == player_data["sage_task"] + 1
+                        and task_num == player_data["sage_task"]
                     ):
                         start_sage_encounter()
+                    elif (
+                        step_in_world == get_route_world(player_data, current_world_idx).get("mob_step", 5)
+                        and current_world_idx not in player_data.get("defeated_mob_worlds", [])
+                    ):
+                        start_mob_encounter()
                 elif selected_for_stats:
                     player_name = selected_for_stats
                     player_data = get_player(player_name, apply_daily_bonus=False)
@@ -1348,12 +1366,6 @@ async def main():
                                     p["emeralds"] += gain
                                     floating_texts.append([f"+{gain} ИЗУМРУД!", hero_x, hero_y - 25, MC_EMERALD, 45])
                                     
-                                    step_in_world += 1
-                                    target_x = platforms[step_in_world][0]
-                                    target_y = platforms[step_in_world][1] - 24
-                                    is_moving = True
-                                    move_progress = 0.0
-
                                     if is_treasure_task:
                                         message = f"СОКРОВИЩЕ НАЙДЕНО! (+{gain} изумр.)"
                                         message_color = MC_GOLD
@@ -1364,18 +1376,23 @@ async def main():
                                         message = f"Верно скрафчено! (+{gain} изумр.)"
                                         message_color = GREEN
 
-                                    if task_num == TOTAL_QUESTS:
+                                    completed_task = task_num
+                                    if completed_task % STEPS_PER_WORLD == 0:
                                         task_num += 1
                                         p["task_num"] = task_num
                                         save_data(all_data)
                                         player_data = p
-                                    elif task_num % STEPS_PER_WORLD == 0:
-                                        task_num += 1
-                                        p["task_num"] = task_num
-                                        save_data(all_data)
-                                        player_data = p
+                                        if completed_task == TOTAL_QUESTS:
+                                            start_boss_battle()
+                                        else:
+                                            game_state = "REVIEW"
                                     else:
                                         task_num += 1
+                                        step_in_world += 1
+                                        target_x = platforms[step_in_world][0]
+                                        target_y = platforms[step_in_world][1] - 24
+                                        is_moving = True
+                                        move_progress = 0.0
                                         p["task_num"] = task_num
                                         save_data(all_data)
                                         player_data = p
@@ -1596,9 +1613,9 @@ async def main():
                         if mob_btn_continue.collidepoint(mouse_pos):
                             if mob_failed_reset:
                                 task_num = current_world_idx * STEPS_PER_WORLD + 1
-                                step_in_world = 0
-                                hero_x = float(platforms[0][0])
-                                hero_y = float(platforms[0][1] - 24)
+                                _, step_in_world = get_task_position(task_num)
+                                hero_x = float(platforms[step_in_world][0])
+                                hero_y = float(platforms[step_in_world][1] - 24)
                                 target_x, target_y = hero_x, hero_y
                                 is_moving = False
                                 all_data = load_data()
@@ -1614,6 +1631,9 @@ async def main():
                                 all_data = load_data()
                                 p = all_data[player_name.strip()]
                                 p["emeralds"] += 5
+                                defeated_worlds = p.setdefault("defeated_mob_worlds", [])
+                                if current_world_idx not in defeated_worlds:
+                                    defeated_worlds.append(current_world_idx)
                                 save_data(all_data)
                                 player_data = p
                                 question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
@@ -1679,12 +1699,11 @@ async def main():
 
                         ten_errors = []
                         if task_num > TOTAL_QUESTS:
-                            game_state = "GAME"
+                            start_boss_battle()
                         else:
-                            current_world_idx = (task_num - 1) // STEPS_PER_WORLD
-                            step_in_world = 0
-                            hero_x = float(platforms[0][0])
-                            hero_y = float(platforms[0][1] - 24)
+                            current_world_idx, step_in_world = get_task_position(task_num)
+                            hero_x = float(platforms[step_in_world][0])
+                            hero_y = float(platforms[step_in_world][1] - 24)
                             target_x, target_y = hero_x, hero_y
                             is_moving = False
                             question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
@@ -1739,7 +1758,12 @@ async def main():
                             _, _, b_upg = get_shop_row_rects(idx, len(WORLDS))
                             if b_upg.collidepoint(mouse_pos):
                                 v_code = w_info["vehicle_type"]
-                                if v_code not in p["upgraded_vehicles"] and p["emeralds"] >= w_info["upg_cost"]:
+                                if v_code not in p.get("owned_vehicles", []) and p["emeralds"] >= w_info["v_cost"]:
+                                    p["emeralds"] -= w_info["v_cost"]
+                                    p.setdefault("owned_vehicles", []).append(v_code)
+                                    play_sound("purchase")
+                                    save_data(all_data)
+                                elif v_code not in p["upgraded_vehicles"] and p["emeralds"] >= w_info["upg_cost"]:
                                     p["emeralds"] -= w_info["upg_cost"]
                                     p["upgraded_vehicles"].append(v_code)
                                     play_sound("purchase")
@@ -1795,10 +1819,13 @@ async def main():
         cur_w = WORLDS[current_world_idx]
         cur_route = get_route_world(player_data, current_world_idx)
         cur_v_type = cur_w["vehicle_type"]
-        is_upgraded = cur_v_type in player_data.get("upgraded_vehicles", []) if player_data else False
+        has_vehicle = cur_v_type in player_data.get("owned_vehicles", []) if player_data else False
+        is_upgraded = has_vehicle and cur_v_type in player_data.get("upgraded_vehicles", []) if player_data else False
+        travel_type = cur_v_type if has_vehicle else "foot"
 
         if is_moving:
-            move_progress += 0.075
+            move_speed = 0.13 if is_upgraded else 0.09 if has_vehicle else 0.055
+            move_progress += move_speed
             if anim_tick % 3 == 0:
                 spawn_dust(hero_x, hero_y + 20)
 
@@ -1809,29 +1836,30 @@ async def main():
                 squash_val = 0.75
                 spawn_dust(hero_x, hero_y + 22)
 
-                if task_num > TOTAL_QUESTS:
-                    start_boss_battle()
-                elif (
+                if (
                     not player_data.get("sage_completed", False)
-                    and player_data.get("sage_task") == task_num - 1
+                    and player_data.get("sage_task") == task_num
                 ):
                     start_sage_encounter()
-                elif step_in_world == cur_route.get("mob_step", 5):
+                elif (
+                    step_in_world == cur_route.get("mob_step", 5)
+                    and current_world_idx not in player_data.get("defeated_mob_worlds", [])
+                ):
                     start_mob_encounter()
-                elif (task_num - 1) % STEPS_PER_WORLD == 0 and (task_num - 1) > 0:
-                    game_state = "REVIEW"
             else:
                 prev_x = platforms[step_in_world - 1][0]
                 hero_x = prev_x + (target_x - prev_x) * move_progress
 
-                if cur_v_type in ["pig", "llama"]:
+                if travel_type in ["pig", "llama"]:
                     hero_y = (platforms[0][1] - 24) - 28 * abs(math.sin(move_progress * math.pi * 2))
-                elif cur_v_type == "boat":
+                elif travel_type == "boat":
                     hero_y = (platforms[0][1] - 24)
-                elif cur_v_type == "strider":
+                elif travel_type == "strider":
                     hero_y = (platforms[0][1] - 24) - 16 * abs(math.sin(move_progress * math.pi * 3))
-                elif cur_v_type == "dragon":
+                elif travel_type == "dragon":
                     hero_y = (platforms[0][1] - 24) - 75 * math.sin(move_progress * math.pi)
+                else:
+                    hero_y = (platforms[0][1] - 24) - 9 * abs(math.sin(move_progress * math.pi))
 
         if combo_count >= 5 and game_state == "GAME":
             spawn_speed_bubbles(hero_x, hero_y)
@@ -1939,7 +1967,7 @@ async def main():
                 pygame.draw.rect(screen, MC_GUI_BLACK, b_rect, 2)
                 
                 mob_step = cur_route.get("mob_step", 5)
-                if i == mob_step and step_in_world < mob_step:
+                if i == mob_step and current_world_idx not in player_data.get("defeated_mob_worlds", []):
                     draw_mob(screen, px, py - 35, cur_route["mob_id"], anim_tick=anim_tick)
                 sage_task = player_data.get("sage_task")
                 sage_step = sage_task - current_world_idx * STEPS_PER_WORLD if sage_task is not None else -1
@@ -1959,7 +1987,7 @@ async def main():
             for pt in particles:
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
-            draw_steve_animated(screen, int(hero_x), int(hero_y), cur_v_type, is_upgraded, 
+            draw_steve_animated(screen, int(hero_x), int(hero_y), travel_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"), 
                                 anim_tick=anim_tick, is_moving=is_moving, squash=squash_val, sword_swing=sword_swing_timer)
             if player_data.get("pet", "none") == "wolf":
@@ -2011,7 +2039,7 @@ async def main():
             pygame.draw.rect(screen, (120, 255, 60), (exp_bg.x, exp_bg.y, fill_w, 10))
             pygame.draw.rect(screen, MC_GUI_BLACK, exp_bg, 2)
 
-            v_title = cur_w["upg_name"] if is_upgraded else cur_w["v_name"]
+            v_title = cur_w["upg_name"] if is_upgraded else cur_w["v_name"] if has_vehicle else "Пешком"
             title_world = FONT_BIG.render(f"{cur_w['name']}  ({v_title})  [{min(task_num, 50)} / {TOTAL_QUESTS}]", True, DARK_TEXT if cur_w["dark_text"] else WHITE)
             screen.blit(title_world, (WIDTH//2 - title_world.get_width()//2, 72))
 
@@ -2083,7 +2111,7 @@ async def main():
             pygame.draw.rect(screen, (60, 60, 65), (210, 205, 140, 20), 2)
             s_lbl = FONT_SMALL.render(player_name, True, DARK_TEXT)
             screen.blit(s_lbl, (280 - s_lbl.get_width() // 2, 95))
-            draw_steve_animated(screen, 280, 175, cur_v_type, is_upgraded,
+            draw_steve_animated(screen, 280, 175, travel_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
             if player_data.get("pet", "none") == "wolf":
@@ -2211,7 +2239,7 @@ async def main():
             screen.blit(t_boss, (WIDTH // 2 - t_boss.get_width() // 2, 58))
 
             pygame.draw.rect(screen, (50, 45, 60), (210, 215, 140, 18))
-            draw_steve_animated(screen, 280, 185, "dragon", True,
+            draw_steve_animated(screen, 280, 185, travel_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer)
             if player_data.get("pet", "none") == "wolf":
@@ -2576,13 +2604,23 @@ async def main():
                     draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
                     draw_item_icon(screen, f"veh_{w_info['vehicle_type']}", slot_rect.centerx, slot_rect.centery)
 
-                    screen.blit(FONT_MED.render(f"{w_info['v_name']} -> {w_info['upg_name']}", True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 10))
-                    screen.blit(FONT_SMALL.render(f"Цена улучшения: {w_info['upg_cost']} изумрудов", True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
+                    screen.blit(FONT_MED.render(f"{w_info['v_name']} -> {w_info['upg_name']}", True, DARK_TEXT), (slot_rect.right + 15, row_rect.y + 7))
 
+                    is_owned = w_info["vehicle_type"] in player_data.get("owned_vehicles", [])
                     is_upg = w_info["vehicle_type"] in player_data.get("upgraded_vehicles", [])
+                    if not is_owned:
+                        transport_status = f"Купить: {w_info['v_cost']} · ускоряет движение"
+                    elif not is_upg:
+                        transport_status = f"Куплено · улучшить за {w_info['upg_cost']} (ещё быстрее)"
+                    else:
+                        transport_status = "Максимальная скорость"
+                    screen.blit(FONT_SMALL.render(transport_status, True, (80, 80, 80)), (slot_rect.right + 15, row_rect.y + 34))
 
                     if is_upg:
                         draw_mc_button(screen, b_upg, "Готово!", False, False, font_pref=FONT_SMALL)
+                    elif not is_owned:
+                        can_buy = player_data["emeralds"] >= w_info["v_cost"]
+                        draw_mc_button(screen, b_upg, "Купить", b_upg.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL)
                     else:
                         can_u = player_data["emeralds"] >= w_info["upg_cost"]
                         draw_mc_button(screen, b_upg, "Прокачать", b_upg.collidepoint(mouse_pos) and can_u, can_u, font_pref=FONT_SMALL)
