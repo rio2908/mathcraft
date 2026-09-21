@@ -167,10 +167,10 @@ HELP_PAGES = [
         "lines": [
             "Выбери Ксению (3 класс) или Настю (5 класс).",
             "Пройди 5 миров и реши всего 50 примеров.",
-            "На каждом островке реши задачу — и только потом иди дальше.",
+            "Решай обычные примеры и находи пропущенные числа.",
+            "На каждом островке ответь верно — и только потом иди дальше.",
             "В каждом новом марафоне задания и стражи меняются.",
             "Золотое задание-сокровище приносит больше изумрудов.",
-            "Кнопка «Игроки» возвращает к выбору героя и статистике.",
         ],
     },
     {
@@ -199,11 +199,11 @@ HELP_PAGES = [
         "title": "ОСОБЫЕ ИСПЫТАНИЯ",
         "lines": [
             "Страж прячется в случайном месте каждого мира.",
+            "У каждого вида стража своя способность — изучи каталог мобов.",
             "Ошибка у стража без тотема возвращает в начало биома.",
             "Библиотекарь даёт одну логическую загадку за марафон.",
             "Верный ответ библиотекарю приносит бесплатный артефакт.",
-            "Дракон повторяет примеры, в которых были ошибки.",
-            "История хранит ошибки, время и рекорды каждого игрока.",
+            "Дракон повторяет ошибки, а следующий марафон — до трёх из них.",
         ],
     },
 ]
@@ -215,6 +215,99 @@ MOB_POOLS = [
     [("blaze", "Ифрит"), ("magma_cube", "Магмовый куб"), ("piglin", "Пиглин")],
     [("enderman", "Эндермен"), ("shulker", "Шалкер"), ("endermite", "Эндермит")],
 ]
+
+MOB_ABILITIES = {
+    "creeper": {
+        "name": "Короткий фитиль",
+        "desc": "У него только 2 сердца: успей обезвредить!",
+        "kind": "fragile",
+        "base_hp": 2,
+    },
+    "zombie": {
+        "name": "Живучесть",
+        "desc": "У него 4 сердца — понадобится лишний точный удар.",
+        "kind": "armored",
+        "base_hp": 4,
+    },
+    "spider": {
+        "name": "Математическая паутина",
+        "desc": "Все задания в бою будут с пропущенным числом.",
+        "kind": "missing",
+        "base_hp": 3,
+    },
+    "skeleton": {
+        "name": "Меткий выстрел",
+        "desc": "Все задания в бою будут с пропущенным числом.",
+        "kind": "missing",
+        "base_hp": 3,
+    },
+    "husk": {
+        "name": "Песчаная броня",
+        "desc": "У него 4 сердца — понадобится лишний точный удар.",
+        "kind": "armored",
+        "base_hp": 4,
+    },
+    "cave_spider": {
+        "name": "Липкая паутина",
+        "desc": "Все задания в бою будут с пропущенным числом.",
+        "kind": "missing",
+        "base_hp": 3,
+    },
+    "stray": {
+        "name": "Ледяная броня",
+        "desc": "У него 4 сердца — понадобится лишний точный удар.",
+        "kind": "armored",
+        "base_hp": 4,
+    },
+    "witch": {
+        "name": "Зелье хаоса",
+        "desc": "В одном бою смешивает все уже открытые действия.",
+        "kind": "mixed",
+        "base_hp": 3,
+    },
+    "snow_golem": {
+        "name": "Снежная хрупкость",
+        "desc": "У него только 2 сердца, зато он очень меткий.",
+        "kind": "fragile",
+        "base_hp": 2,
+    },
+    "blaze": {
+        "name": "Огненный хаос",
+        "desc": "В одном бою смешивает все уже открытые действия.",
+        "kind": "mixed",
+        "base_hp": 3,
+    },
+    "magma_cube": {
+        "name": "Магмовая броня",
+        "desc": "У него 4 сердца — понадобится лишний точный удар.",
+        "kind": "armored",
+        "base_hp": 4,
+    },
+    "piglin": {
+        "name": "Золотая броня",
+        "desc": "У него 4 сердца — понадобится лишний точный удар.",
+        "kind": "armored",
+        "base_hp": 4,
+    },
+    "enderman": {
+        "name": "Искажение Края",
+        "desc": "Смешивает сложение, вычитание, умножение и деление.",
+        "kind": "mixed",
+        "base_hp": 3,
+    },
+    "shulker": {
+        "name": "Панцирь",
+        "desc": "У него 4 сердца — понадобится лишний точный удар.",
+        "kind": "armored",
+        "base_hp": 4,
+    },
+    "endermite": {
+        "name": "Путаница Края",
+        "desc": "Все задания в бою будут с пропущенным числом.",
+        "kind": "missing",
+        "base_hp": 3,
+    },
+}
 
 ROUTE_TEMPLATES = {
     "easy": [
@@ -259,6 +352,53 @@ def create_sage_task(route, start_at=1):
         if task % STEPS_PER_WORLD != 0 and task not in occupied
     ]
     return random.choice(candidates) if candidates else None
+
+def create_adaptive_tasks(profile, count=3):
+    """Replace a few future tasks with the player's most troublesome errors."""
+    history_details = []
+    for game in profile.get("game_history", []):
+        history_details.extend(game.get("error_details", []))
+
+    current_details = profile.get("marathon_error_details", [])
+    last_game_details = (
+        profile.get("game_history", [])[-1].get("error_details", [])
+        if profile.get("game_history") else []
+    )
+    if current_details != last_game_details:
+        history_details.extend(current_details)
+
+    ranked = {}
+    for order, detail in enumerate(history_details):
+        expression = detail.get("expr")
+        answer = detail.get("correct")
+        if not expression or not isinstance(answer, int):
+            continue
+        key = (expression, answer)
+        if key not in ranked:
+            ranked[key] = {"count": 0, "last_seen": order, "detail": detail}
+        ranked[key]["count"] += 1
+        ranked[key]["last_seen"] = order
+        ranked[key]["detail"] = detail
+
+    difficult = sorted(
+        ranked.values(),
+        key=lambda item: (item["count"], item["last_seen"]),
+        reverse=True,
+    )[:count]
+    if not difficult:
+        return {}
+
+    selected_worlds = random.sample(range(len(WORLDS)), len(difficult))
+    task_numbers = [world_idx * 10 + random.randint(1, 10) for world_idx in selected_worlds]
+    adaptive = {}
+    for task_number, item in zip(task_numbers, difficult):
+        detail = item["detail"]
+        adaptive[str(task_number)] = {
+            "expr": detail["expr"],
+            "correct": detail["correct"],
+            "wrong": detail.get("wrong"),
+        }
+    return adaptive
 
 def get_route_world(profile, world_idx):
     route = profile.get("marathon_route", []) if profile else []
@@ -339,6 +479,7 @@ def get_player(name, apply_daily_bonus=True):
             "pets_lost": 0,
             "marathon_elapsed_seconds": 0,
             "defeated_mob_worlds": [],
+            "adaptive_tasks": {},
         }
     else:
         p = profiles[name]
@@ -382,6 +523,7 @@ def get_player(name, apply_daily_bonus=True):
         if "pets_lost" not in p: p["pets_lost"] = 0
         if "marathon_elapsed_seconds" not in p: p["marathon_elapsed_seconds"] = 0
         if "defeated_mob_worlds" not in p: p["defeated_mob_worlds"] = []
+        if "adaptive_tasks" not in p: p["adaptive_tasks"] = {}
         for helmet_id in p.get("unlocked_helmets", ["none"]):
             if helmet_id != "none" and helmet_id not in p["helmet_durability"]:
                 p["helmet_durability"][helmet_id] = HELMETS.get(helmet_id, {}).get("max_durability", 0)
@@ -434,7 +576,27 @@ def register_pet_error(profile):
     profile["pet_errors"] = errors
     return {"ran_away": False, "pet_name": PETS.get(pet_id, {}).get("name", "Питомец"), "errors": errors}
 
-def make_math_task(ops_list):
+def make_answer_choices(answer, minimum, maximum):
+    """Build three unique nearby answers, including the correct one."""
+    variants = {answer}
+    offsets = [-3, -2, -1, 1, 2, 3]
+    random.shuffle(offsets)
+    for offset in offsets:
+        candidate = answer + offset
+        if minimum <= candidate <= maximum:
+            variants.add(candidate)
+        if len(variants) == 3:
+            break
+    if len(variants) < 3:
+        for candidate in range(minimum, maximum + 1):
+            variants.add(candidate)
+            if len(variants) == 3:
+                break
+    choices = list(variants)
+    random.shuffle(choices)
+    return choices
+
+def make_math_task(ops_list, force_missing=False):
     op = random.choice(ops_list)
     is_hard = PLAYER_PROFILES.get(globals().get("player_name"), {}).get("difficulty") == "hard"
     max_answer = 100 if is_hard else 20
@@ -468,15 +630,34 @@ def make_math_task(ops_list):
         a, b, ans = random.choice(div_pairs)
         sym = ":"
 
-    variants = {ans}
-    while len(variants) < 3:
-        fake = ans + random.choice([-3, -2, -1, 1, 2, 3])
-        if 1 <= fake <= max_answer and fake != ans:
-            variants.add(fake)
-            
-    v_list = list(variants)
-    random.shuffle(v_list)
-    return f"{a} {sym} {b} = ?", ans, v_list, op, f"{a} {sym} {b}"
+    # Roughly every fourth task asks for an operand instead of the result.
+    # The equation stays valid and uses the same difficulty limits as a normal task.
+    if force_missing or random.random() < 0.25:
+        hide_left = random.choice([True, False])
+        missing_answer = a if hide_left else b
+        missing_min = 2
+        if op in ("*", "/") and not (op == "/" and hide_left):
+            missing_max = 10
+        else:
+            missing_max = max_answer
+        left = "?" if hide_left else str(a)
+        right = str(b) if hide_left else "?"
+        equation = f"{left} {sym} {right} = {ans}"
+        return (
+            equation,
+            missing_answer,
+            make_answer_choices(missing_answer, missing_min, missing_max),
+            op,
+            equation,
+        )
+
+    return (
+        f"{a} {sym} {b} = ?",
+        ans,
+        make_answer_choices(ans, 1, max_answer),
+        op,
+        f"{a} {sym} {b}",
+    )
 
 def make_review_task(error_detail):
     answer = error_detail["correct"]
@@ -491,7 +672,17 @@ def make_review_task(error_detail):
     choices = list(variants)
     random.shuffle(choices)
     expression = error_detail["expr"]
-    return f"{expression} = ?", answer, choices, "review", expression
+    question = expression if "?" in expression else f"{expression} = ?"
+    return question, answer, choices, "review", expression
+
+def make_task_for_step(profile, task_number):
+    adaptive = profile.get("adaptive_tasks", {}) if profile else {}
+    error_detail = adaptive.get(str(task_number), adaptive.get(task_number))
+    if error_detail:
+        question, answer, task_choices, _, expression = make_review_task(error_detail)
+        return question, answer, task_choices, "adaptive", expression
+    world_idx, _ = get_task_position(task_number)
+    return make_math_task(get_route_world(profile, world_idx)["ops"])
 
 def pick_logic_task(profile_name, previous_question=None):
     difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
@@ -974,7 +1165,7 @@ sword_swing_timer = 0
 mob_flash_timer = 0
 
 ten_errors = []
-question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
+question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
 message = "Добудь правильный ответ!"
 message_color = DARK_TEXT
 
@@ -1018,6 +1209,7 @@ history_page = 0
 history_selected_index = None
 HISTORY_PER_PAGE = 5
 help_page = 0
+mob_catalog_page = 0
 
 workbench_tab = "HELMETS"
 
@@ -1070,11 +1262,27 @@ def persist_marathon_timer():
 
 def get_mob_max_hp():
     arts = player_data.get("artifacts", []) if player_data else []
+    mob_id = get_route_world(player_data, current_world_idx).get("mob_id", "creeper")
+    ability = MOB_ABILITIES.get(mob_id, {"base_hp": 3})
+    base_hp = ability.get("base_hp", 3)
     if "strength_potion" in arts:
         return 1
     if "sharp_sword" in arts:
-        return 2
-    return 3
+        return max(1, base_hp - 1)
+    return base_hp
+
+def make_mob_battle_task(profile, world_idx):
+    route_world = get_route_world(profile, world_idx)
+    mob_id = route_world.get("mob_id", "creeper")
+    ability = MOB_ABILITIES.get(mob_id, {})
+    ops = list(route_world["ops"])
+    if ability.get("kind") == "mixed":
+        ops = ["+", "-"]
+        if world_idx >= 2:
+            ops.append("*")
+        if world_idx >= 3:
+            ops.append("/")
+    return make_math_task(ops, force_missing=ability.get("kind") == "missing")
 
 def get_boss_max_hp():
     arts = player_data.get("artifacts", []) if player_data else []
@@ -1095,8 +1303,9 @@ def start_mob_encounter():
     mob_hp = mob_max_hp
     mob_failed_reset = False
     mob_battle_result_msg = "Реши пример, чтобы нанести удар!"
-    route_ops = get_route_world(player_data, current_world_idx)["ops"]
-    mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
+    mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
+        player_data, current_world_idx
+    )
 
 def start_boss_battle():
     global game_state, boss_streak, boss_max_hp
@@ -1155,6 +1364,7 @@ def reset_entire_marathon():
     all_data = load_data()
     if player_name.strip() in all_data:
         p = all_data[player_name.strip()]
+        next_adaptive_tasks = create_adaptive_tasks(p)
         p["task_num"] = 1
         p["marathon_errors"] = 0
         p["marathon_error_details"] = []
@@ -1167,10 +1377,11 @@ def reset_entire_marathon():
         p["sage_artifact"] = None
         p["marathon_elapsed_seconds"] = 0
         p["defeated_mob_worlds"] = []
+        p["adaptive_tasks"] = next_adaptive_tasks
         save_data(all_data)
         player_data = p
 
-    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, 0)["ops"])
+    question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
     message = "Марафон начат сначала! Вперёд!"
     message_color = DARK_TEXT
     game_state = "GAME"
@@ -1201,10 +1412,14 @@ player_stats_buttons = {
     "Ксения": pygame.Rect(WIDTH // 2 + 55, 245, 150, 44),
     "Настя": pygame.Rect(WIDTH // 2 + 55, 330, 150, 44),
 }
-help_login_btn = pygame.Rect(WIDTH // 2 - 105, 465, 210, 46)
+help_login_btn = pygame.Rect(WIDTH // 2 - 220, 465, 210, 46)
+mob_catalog_btn = pygame.Rect(WIDTH // 2 + 10, 465, 210, 46)
 help_prev_btn = pygame.Rect(190, 515, 150, 42)
 help_close_btn = pygame.Rect(WIDTH // 2 - 90, 515, 180, 42)
 help_next_btn = pygame.Rect(660, 515, 150, 42)
+catalog_prev_btn = pygame.Rect(190, 515, 150, 42)
+catalog_close_btn = pygame.Rect(WIDTH // 2 - 90, 515, 180, 42)
+catalog_next_btn = pygame.Rect(660, 515, 150, 42)
 
 mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
 boss_btn_finish = pygame.Rect(WIDTH // 2 - 150, 475, 300, 48)
@@ -1235,7 +1450,7 @@ async def main():
     global history_page, history_selected_index
     global sage_msg, sage_finished, sage_won, sage_reward_name
     global marathon_elapsed_seconds, timer_save_accumulator, boss_speed_bonus, boss_previous_time
-    global help_page
+    global help_page, mob_catalog_page
 
     running = True
 
@@ -1263,6 +1478,10 @@ async def main():
                         help_page = 0
                         game_state = "HELP"
                         continue
+                    if mob_catalog_btn.collidepoint(mouse_pos):
+                        mob_catalog_page = 0
+                        game_state = "MOB_CATALOG"
+                        continue
                     for profile_name in PLAYER_PROFILES:
                         if player_play_buttons[profile_name].collidepoint(mouse_pos):
                             selected_for_play = profile_name
@@ -1282,7 +1501,7 @@ async def main():
                     hero_y = float(platforms[step_in_world][1] - 24)
                     target_x, target_y = hero_x, hero_y
                     ten_errors = []
-                    question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
+                    question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
                     game_state = "GAME"
                     if (
                         not player_data.get("sage_completed", False)
@@ -1313,6 +1532,15 @@ async def main():
                         help_page -= 1
                     elif help_page < len(HELP_PAGES) - 1 and help_next_btn.collidepoint(mouse_pos):
                         help_page += 1
+
+            elif game_state == "MOB_CATALOG":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if catalog_close_btn.collidepoint(mouse_pos):
+                        game_state = "LOGIN"
+                    elif mob_catalog_page > 0 and catalog_prev_btn.collidepoint(mouse_pos):
+                        mob_catalog_page -= 1
+                    elif mob_catalog_page < len(MOB_POOLS) - 1 and catalog_next_btn.collidepoint(mouse_pos):
+                        mob_catalog_page += 1
 
             elif game_state == "GAME":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1396,7 +1624,7 @@ async def main():
                                         p["task_num"] = task_num
                                         save_data(all_data)
                                         player_data = p
-                                        question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
+                                        question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
 
                                 else:
                                     wrong_val = choices[i]
@@ -1623,7 +1851,7 @@ async def main():
                                 p["task_num"] = task_num
                                 save_data(all_data)
                                 player_data = p
-                                question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
+                                question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
                                 message = "Моб победил! Уровень начат заново!"
                                 message_color = RED
                                 game_state = "GAME"
@@ -1636,7 +1864,7 @@ async def main():
                                     defeated_worlds.append(current_world_idx)
                                 save_data(all_data)
                                 player_data = p
-                                question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
+                                question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
                                 message = "Моб повержен! Путь открыт!"
                                 message_color = GREEN
                                 game_state = "GAME"
@@ -1666,8 +1894,9 @@ async def main():
                                             if pet_damage == 2 else
                                             f"Точный удар! Осталось сердец: {mob_hp}"
                                         )
-                                        route_ops = get_route_world(p, current_world_idx)["ops"]
-                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
+                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
+                                            p, current_world_idx
+                                        )
                                 else:
                                     play_sound("wrong")
                                     pet_error = register_pet_error(p)
@@ -1680,8 +1909,9 @@ async def main():
                                         player_data = p
                                         spawn_hit_sparks(280, 185, is_shield=True)
                                         mob_battle_result_msg = f"Тотем спас от сброса! Осталось: {p['totems']}.{pet_suffix}"
-                                        route_ops = get_route_world(p, current_world_idx)["ops"]
-                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_math_task(route_ops)
+                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
+                                            p, current_world_idx
+                                        )
                                     else:
                                         mob_failed_reset = True
                                         mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!{pet_suffix}"
@@ -1706,7 +1936,7 @@ async def main():
                             hero_y = float(platforms[step_in_world][1] - 24)
                             target_x, target_y = hero_x, hero_y
                             is_moving = False
-                            question_str, correct_ans, choices, current_op, clean_expr = make_math_task(get_route_world(player_data, current_world_idx)["ops"])
+                            question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
                             message = "Новый биом открыт! Вперёд!"
                             message_color = DARK_TEXT
                             game_state = "GAME"
@@ -1880,7 +2110,7 @@ async def main():
         # Отрисовка
         if game_state == "LOGIN":
             screen.fill((115, 170, 225))
-            card = pygame.Rect(WIDTH // 2 - 320, 75, 640, 360)
+            card = pygame.Rect(WIDTH // 2 - 320, 55, 640, 500)
             pygame.draw.rect(screen, MC_GUI_BG, card)
             pygame.draw.rect(screen, MC_GUI_LIGHT, (card.left, card.top, card.width, 3))
             pygame.draw.rect(screen, MC_GUI_DARK, (card.left, card.bottom - 3, card.width, 3))
@@ -1915,6 +2145,11 @@ async def main():
                 screen, help_login_btn, "Как играть?",
                 help_login_btn.collidepoint(mouse_pos),
                 font_pref=FONT_BIG, custom_bg=(125, 85, 155)
+            )
+            draw_mc_button(
+                screen, mob_catalog_btn, "Каталог мобов",
+                mob_catalog_btn.collidepoint(mouse_pos),
+                font_pref=FONT_BIG, custom_bg=(155, 85, 75)
             )
 
         elif game_state == "HELP":
@@ -1954,6 +2189,50 @@ async def main():
             )
             if help_page < len(HELP_PAGES) - 1:
                 draw_mc_button(screen, help_next_btn, "Дальше >", help_next_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
+
+        elif game_state == "MOB_CATALOG":
+            screen.fill((38, 43, 52))
+            catalog_card = pygame.Rect(45, 20, 910, 560)
+            pygame.draw.rect(screen, (215, 215, 210), catalog_card)
+            pygame.draw.rect(screen, (130, 55, 45), catalog_card, 4)
+
+            catalog_world = WORLDS[mob_catalog_page]
+            catalog_title = FONT_TITLE.render("КАТАЛОГ МОБОВ", True, (115, 45, 38))
+            screen.blit(catalog_title, (WIDTH // 2 - catalog_title.get_width() // 2, 38))
+            world_title = FONT_MED.render(catalog_world["name"], True, DARK_TEXT)
+            screen.blit(world_title, (WIDTH // 2 - world_title.get_width() // 2, 78))
+
+            for mob_index, (mob_id, mob_name) in enumerate(MOB_POOLS[mob_catalog_page]):
+                ability = MOB_ABILITIES[mob_id]
+                card_x = 75 + mob_index * 300
+                mob_card = pygame.Rect(card_x, 118, 250, 340)
+                pygame.draw.rect(screen, (238, 238, 232), mob_card, border_radius=8)
+                pygame.draw.rect(screen, (105, 80, 70), mob_card, 2, border_radius=8)
+
+                name_surface = FONT_BIG.render(mob_name, True, DARK_TEXT)
+                screen.blit(name_surface, (mob_card.centerx - name_surface.get_width() // 2, 135))
+                draw_mob(screen, mob_card.centerx, 235, mob_id, anim_tick=anim_tick)
+                ability_surface = FONT_MED.render(ability["name"], True, (160, 55, 45))
+                screen.blit(ability_surface, (mob_card.centerx - ability_surface.get_width() // 2, 300))
+                draw_centered_wrapped_text(
+                    screen, ability["desc"], FONT_SMALL, DARK_TEXT,
+                    mob_card.centerx, 340, mob_card.width - 28, line_gap=5
+                )
+
+            page_surface = FONT_SMALL.render(
+                f"Биом {mob_catalog_page + 1} из {len(MOB_POOLS)}",
+                True, (90, 90, 95)
+            )
+            screen.blit(page_surface, (WIDTH // 2 - page_surface.get_width() // 2, 477))
+            if mob_catalog_page > 0:
+                draw_mc_button(screen, catalog_prev_btn, "< Назад", catalog_prev_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
+            draw_mc_button(
+                screen, catalog_close_btn, "К игрокам",
+                catalog_close_btn.collidepoint(mouse_pos), font_pref=FONT_MED,
+                custom_bg=(75, 115, 155)
+            )
+            if mob_catalog_page < len(MOB_POOLS) - 1:
+                draw_mc_button(screen, catalog_next_btn, "Дальше >", catalog_next_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         elif game_state == "GAME":
             screen.fill(cur_w["sky"])
@@ -2044,7 +2323,12 @@ async def main():
             screen.blit(title_world, (WIDTH//2 - title_world.get_width()//2, 72))
 
             is_treasure_task = task_num in player_data.get("treasure_tasks", [])
-            if is_treasure_task and task_num <= TOTAL_QUESTS:
+            if current_op == "adaptive" and task_num <= TOTAL_QUESTS:
+                adaptive_label = "ПОВТОР ПРОШЛОЙ ОШИБКИ"
+                if is_treasure_task:
+                    adaptive_label += " · СОКРОВИЩЕ +2"
+                draw_readable_badge(screen, WIDTH // 2, 118, adaptive_label, border_col=(115, 65, 155), text_col=(235, 205, 255), font=FONT_SMALL)
+            elif is_treasure_task and task_num <= TOTAL_QUESTS:
                 draw_readable_badge(screen, WIDTH // 2, 118, "ЗАДАНИЕ-СОКРОВИЩЕ: +2 ИЗУМРУДА", border_col=(160, 125, 20), text_col=MC_GOLD, font=FONT_SMALL)
             elif combo_count >= 5:
                 draw_readable_badge(screen, WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
@@ -2104,6 +2388,7 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BLACK, arena_card, 3)
 
             mob_name = cur_route["mob_name"]
+            mob_ability = MOB_ABILITIES.get(cur_route["mob_id"], {})
             t_mob = FONT_TITLE.render(f"БИТВА СО СТРАЖЕМ: {mob_name.upper()}!", True, RED)
             screen.blit(t_mob, (WIDTH // 2 - t_mob.get_width() // 2, 38))
 
@@ -2130,6 +2415,11 @@ async def main():
                 draw_mc_heart(screen, hearts_start_x + h_i * 26, 95, filled=(h_i < mob_hp))
 
             draw_mob(screen, 720, 165, cur_route["mob_id"], anim_tick=anim_tick, flash_red=(mob_flash_timer > 0))
+
+            ability_label = f"{mob_ability.get('name', 'Без способности')}: {mob_ability.get('desc', '')}"
+            ability_font = FONT_SMALL if FONT_SMALL.size(ability_label)[0] <= 700 else FONT_TINY
+            ability_surface = ability_font.render(ability_label, True, (125, 45, 40))
+            screen.blit(ability_surface, (WIDTH // 2 - ability_surface.get_width() // 2, 235))
 
             for pt in particles:
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
