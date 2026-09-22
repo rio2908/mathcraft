@@ -3,6 +3,7 @@
 import random
 
 from game_content import (
+    LOCATION_GROUPS,
     LOGIC_TASKS,
     MOB_POOLS,
     PLAYER_PROFILES,
@@ -18,11 +19,13 @@ def create_marathon_route(profile_name):
     route = []
     for world_idx, operation_variants in enumerate(ROUTE_TEMPLATES[difficulty]):
         mob_id, mob_name = random.choice(MOB_POOLS[world_idx])
+        location = random.choice(LOCATION_GROUPS[world_idx])
         route.append({
             "ops": list(random.choice(operation_variants)),
             "mob_id": mob_id,
             "mob_name": mob_name,
             "mob_step": random.randint(3, 8),
+            "location_id": location["id"],
         })
     return route
 
@@ -103,6 +106,23 @@ def get_route_world(profile, world_idx):
         "mob_id": WORLDS[world_idx]["mob_id"],
         "mob_name": WORLDS[world_idx]["mob_name"],
     }
+
+
+def get_world_location(profile, world_idx):
+    """Return the saved visual location merged with the world's gameplay data."""
+    world = dict(WORLDS[world_idx])
+    route_world = get_route_world(profile, world_idx)
+    location_id = route_world.get("location_id", LOCATION_GROUPS[world_idx][0]["id"])
+    location = next(
+        (
+            candidate
+            for candidate in LOCATION_GROUPS[world_idx]
+            if candidate["id"] == location_id
+        ),
+        LOCATION_GROUPS[world_idx][0],
+    )
+    world.update(location)
+    return world
 
 
 def make_answer_choices(answer, minimum, maximum):

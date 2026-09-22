@@ -11,6 +11,7 @@ from game_content import (
     ARTIFACTS,
     HELMETS,
     HELP_PAGES,
+    LOCATION_GROUPS,
     MOB_ABILITIES,
     MOB_POOLS,
     PETS,
@@ -27,6 +28,7 @@ from game_tasks import (
     create_sage_task,
     create_treasure_tasks,
     get_route_world,
+    get_world_location,
     make_math_task as generate_math_task,
     make_review_task,
     pick_logic_task,
@@ -198,9 +200,14 @@ def get_player(name, apply_daily_bonus=True, remember_player=True):
         if "helmet_durability" not in p: p["helmet_durability"] = {"none": 0}
         if len(p.get("marathon_route", [])) != len(WORLDS):
             p["marathon_route"] = create_marathon_route(name)
-        for world in p["marathon_route"]:
+        for world_idx, world in enumerate(p["marathon_route"]):
             if "mob_step" not in world:
                 world["mob_step"] = random.randint(3, 8)
+            valid_location_ids = {
+                location["id"] for location in LOCATION_GROUPS[world_idx]
+            }
+            if world.get("location_id") not in valid_location_ids:
+                world["location_id"] = LOCATION_GROUPS[world_idx][0]["id"]
         if len(p.get("treasure_tasks", [])) != len(WORLDS):
             p["treasure_tasks"] = create_treasure_tasks()
         if "sage_task" not in p:
@@ -491,9 +498,9 @@ def draw_pixel_cloud(surf, x, y, scale=1, color=(245, 250, 255)):
         )
 
 
-def draw_world_background(surf, world_idx, tick, ground_y):
-    """Draw a lightweight animated background for the current biome."""
-    world = WORLDS[world_idx]
+def draw_world_background(surf, world_idx, world, tick, ground_y):
+    """Draw a lightweight animated background for the saved location."""
+    theme = world.get("theme", LOCATION_GROUPS[world_idx][0]["theme"])
     surf.fill(world["sky"])
 
     if world_idx == 0:
@@ -515,41 +522,153 @@ def draw_world_background(surf, world_idx, tick, ground_y):
             cloud_x = (start_x + tick * speed) % (WIDTH + 130) - 70
             draw_pixel_cloud(surf, cloud_x, cloud_y, scale)
 
+        if theme == "village":
+            for house_x, house_y, wall_color in (
+                (85, 385, (185, 145, 85)),
+                (690, 365, (205, 170, 105)),
+                (825, 405, (175, 130, 75)),
+            ):
+                pygame.draw.rect(surf, wall_color, (house_x, house_y, 105, ground_y - house_y))
+                pygame.draw.polygon(
+                    surf,
+                    (105, 65, 40),
+                    [(house_x - 10, house_y), (house_x + 52, house_y - 48), (house_x + 115, house_y)],
+                )
+                pygame.draw.rect(surf, (70, 45, 30), (house_x + 42, house_y + 35, 22, 50))
+                pygame.draw.rect(surf, (255, 220, 95), (house_x + 15, house_y + 22, 18, 18))
+            smoke_y = 315 - int((tick * 0.35) % 70)
+            smoke_x = 150 + int(math.sin(tick * 0.035) * 10)
+            pygame.draw.circle(surf, (220, 225, 220), (smoke_x, smoke_y), 8)
+            pygame.draw.circle(surf, (235, 238, 235), (smoke_x + 8, smoke_y - 12), 6)
+
+        elif theme == "cherry_grove":
+            for tree_x, tree_y in ((105, 370), (720, 350), (890, 390)):
+                pygame.draw.rect(surf, (95, 60, 48), (tree_x - 7, tree_y, 14, ground_y - tree_y))
+                pygame.draw.circle(surf, (235, 145, 180), (tree_x, tree_y - 25), 42)
+                pygame.draw.circle(surf, (250, 180, 205), (tree_x - 28, tree_y - 12), 28)
+                pygame.draw.circle(surf, (245, 165, 195), (tree_x + 30, tree_y - 10), 30)
+            for petal_index in range(16):
+                petal_x = int((petal_index * 67 + tick * 0.7) % WIDTH)
+                petal_y = 110 + int((petal_index * 43 + tick * 0.45) % 340)
+                petal_y += int(math.sin(tick * 0.04 + petal_index) * 8)
+                pygame.draw.rect(surf, (255, 185, 215), (petal_x, petal_y, 4, 3))
+
     elif world_idx == 1:
         pygame.draw.circle(surf, (255, 235, 125), (820, 115), 52)
-        pygame.draw.polygon(
-            surf,
-            (225, 185, 105),
-            [(0, ground_y), (0, 410), (210, 350), (430, 420), (690, 345), (1000, 410), (1000, ground_y)],
-        )
-        pygame.draw.polygon(
-            surf,
-            (195, 145, 75),
-            [(0, ground_y), (180, 430), (350, 455), (610, 395), (820, 450), (1000, 415), (1000, ground_y)],
-        )
-        for particle_index in range(13):
-            sand_x = int((particle_index * 83 + tick * 1.1) % (WIDTH + 20) - 10)
-            sand_y = 120 + (particle_index * 47) % 300
-            sand_y += int(math.sin(tick * 0.04 + particle_index) * 8)
-            pygame.draw.rect(surf, (190, 145, 80), (sand_x, sand_y, 3, 3))
+        if theme == "savanna":
+            pygame.draw.polygon(
+                surf,
+                (145, 145, 60),
+                [(0, ground_y), (0, 420), (220, 365), (450, 430), (690, 365), (1000, 420), (1000, ground_y)],
+            )
+            for tree_x, tree_y in ((120, 390), (730, 375), (910, 420)):
+                sway = int(math.sin(tick * 0.035 + tree_x) * 3)
+                pygame.draw.rect(surf, (95, 65, 35), (tree_x - 6, tree_y, 12, ground_y - tree_y))
+                pygame.draw.ellipse(surf, (90, 125, 45), (tree_x - 50 + sway, tree_y - 28, 100, 35))
+                pygame.draw.ellipse(surf, (105, 140, 50), (tree_x - 20 + sway, tree_y - 45, 75, 32))
+            for leaf_index in range(10):
+                leaf_x = int((leaf_index * 101 + tick * 0.55) % WIDTH)
+                leaf_y = 150 + (leaf_index * 53) % 260
+                pygame.draw.rect(surf, (120, 135, 45), (leaf_x, leaf_y, 4, 2))
+
+        elif theme == "badlands":
+            for mesa_x, mesa_width, mesa_top in ((0, 220, 305), (175, 260, 355), (650, 230, 285), (835, 200, 350)):
+                pygame.draw.rect(surf, (155, 70, 45), (mesa_x, mesa_top, mesa_width, ground_y - mesa_top))
+                pygame.draw.rect(surf, (210, 115, 60), (mesa_x, mesa_top + 25, mesa_width, 20))
+                pygame.draw.rect(surf, (235, 155, 80), (mesa_x, mesa_top + 70, mesa_width, 14))
+            for dust_index in range(13):
+                dust_x = int((dust_index * 83 + tick * 1.0) % (WIDTH + 20) - 10)
+                dust_y = 110 + (dust_index * 47) % 310
+                dust_y += int(math.sin(tick * 0.04 + dust_index) * 8)
+                pygame.draw.rect(surf, (190, 105, 60), (dust_x, dust_y, 4, 3))
+
+        else:
+            pygame.draw.polygon(
+                surf,
+                (225, 185, 105),
+                [(0, ground_y), (0, 410), (210, 350), (430, 420), (690, 345), (1000, 410), (1000, ground_y)],
+            )
+            pygame.draw.polygon(
+                surf,
+                (195, 145, 75),
+                [(0, ground_y), (180, 430), (350, 455), (610, 395), (820, 450), (1000, 415), (1000, ground_y)],
+            )
+            for particle_index in range(13):
+                sand_x = int((particle_index * 83 + tick * 1.1) % (WIDTH + 20) - 10)
+                sand_y = 120 + (particle_index * 47) % 300
+                sand_y += int(math.sin(tick * 0.04 + particle_index) * 8)
+                pygame.draw.rect(surf, (190, 145, 80), (sand_x, sand_y, 3, 3))
 
     elif world_idx == 2:
         pygame.draw.circle(surf, (235, 245, 255), (835, 115), 38)
-        pygame.draw.polygon(
-            surf,
-            (155, 195, 225),
-            [(0, ground_y), (135, 270), (290, ground_y), (455, 235), (655, ground_y)],
-        )
-        pygame.draw.polygon(
-            surf,
-            (235, 245, 250),
-            [(68, 385), (135, 270), (205, 375), (455, 235), (545, 350), (655, ground_y)],
-        )
-        pygame.draw.polygon(
-            surf,
-            (135, 180, 215),
-            [(520, ground_y), (735, 320), (855, 410), (935, 295), (1000, 360), (1000, ground_y)],
-        )
+        if theme == "ice_spikes":
+            for spike_x, spike_width, spike_height in (
+                (45, 80, 210),
+                (190, 105, 290),
+                (690, 90, 250),
+                (865, 110, 320),
+            ):
+                pygame.draw.polygon(
+                    surf,
+                    (145, 205, 235),
+                    [
+                        (spike_x, ground_y),
+                        (spike_x + spike_width // 2, ground_y - spike_height),
+                        (spike_x + spike_width, ground_y),
+                    ],
+                )
+                pygame.draw.polygon(
+                    surf,
+                    (220, 245, 255),
+                    [
+                        (spike_x + spike_width // 2, ground_y - spike_height),
+                        (spike_x + spike_width, ground_y),
+                        (spike_x + spike_width * 3 // 4, ground_y),
+                    ],
+                )
+        elif theme == "snowy_taiga":
+            pygame.draw.polygon(
+                surf,
+                (130, 170, 180),
+                [(0, ground_y), (170, 320), (330, ground_y), (520, 300), (760, ground_y)],
+            )
+            for tree_x, tree_y, tree_height in ((75, 390, 115), (220, 420, 90), (720, 380, 130), (900, 410, 105)):
+                sway = int(math.sin(tick * 0.025 + tree_x) * 2)
+                pygame.draw.rect(surf, (80, 60, 45), (tree_x - 5, tree_y, 10, ground_y - tree_y))
+                for layer in range(3):
+                    layer_y = tree_y - tree_height + layer * 30
+                    pygame.draw.polygon(
+                        surf,
+                        (45, 100 + layer * 8, 85),
+                        [
+                            (tree_x + sway, layer_y),
+                            (tree_x - 38 + layer * 7, layer_y + 58),
+                            (tree_x + 38 - layer * 7, layer_y + 58),
+                        ],
+                    )
+                    pygame.draw.line(
+                        surf,
+                        WHITE,
+                        (tree_x - 25 + layer * 5, layer_y + 38),
+                        (tree_x + 25 - layer * 5, layer_y + 38),
+                        3,
+                    )
+        else:
+            pygame.draw.polygon(
+                surf,
+                (155, 195, 225),
+                [(0, ground_y), (135, 270), (290, ground_y), (455, 235), (655, ground_y)],
+            )
+            pygame.draw.polygon(
+                surf,
+                (235, 245, 250),
+                [(68, 385), (135, 270), (205, 375), (455, 235), (545, 350), (655, ground_y)],
+            )
+            pygame.draw.polygon(
+                surf,
+                (135, 180, 215),
+                [(520, ground_y), (735, 320), (855, 410), (935, 295), (1000, 360), (1000, ground_y)],
+            )
         for snow_index in range(18):
             wind = math.sin(tick * 0.03 + snow_index) * 18
             snow_x = int((snow_index * 61 + tick * 0.45 + wind) % WIDTH)
@@ -558,45 +677,93 @@ def draw_world_background(surf, world_idx, tick, ground_y):
             pygame.draw.rect(surf, WHITE, (snow_x, snow_y, snow_size, snow_size))
 
     elif world_idx == 3:
-        pygame.draw.circle(surf, (190, 45, 20), (820, 145), 58)
-        pillars = (
-            (35, 80, 210),
-            (205, 110, 150),
-            (690, 95, 230),
-            (875, 75, 175),
-        )
-        for pillar_index, (pillar_x, pillar_width, pillar_height) in enumerate(pillars):
-            pillar_color = (72 + pillar_index * 4, 18, 18)
-            pygame.draw.rect(
-                surf,
-                pillar_color,
-                (pillar_x, ground_y - pillar_height, pillar_width, pillar_height),
-            )
-            pygame.draw.rect(
-                surf,
-                (115, 28, 18),
-                (pillar_x, ground_y - pillar_height, pillar_width, 8),
-            )
+        if theme == "nether_wastes":
+            pygame.draw.circle(surf, (190, 45, 20), (820, 145), 58)
+            pillars = ((35, 80, 210), (205, 110, 150), (690, 95, 230), (875, 75, 175))
+            for pillar_index, (pillar_x, pillar_width, pillar_height) in enumerate(pillars):
+                pillar_color = (72 + pillar_index * 4, 18, 18)
+                pygame.draw.rect(
+                    surf,
+                    pillar_color,
+                    (pillar_x, ground_y - pillar_height, pillar_width, pillar_height),
+                )
+                pygame.draw.rect(
+                    surf,
+                    (115, 28, 18),
+                    (pillar_x, ground_y - pillar_height, pillar_width, 8),
+                )
+        else:
+            warped = theme == "warped_forest"
+            trunk_color = (25, 105, 100) if warped else (115, 28, 45)
+            cap_color = (35, 155, 140) if warped else (180, 42, 65)
+            glow_color = (85, 230, 195) if warped else (255, 105, 85)
+            for fungus_x, fungus_y, fungus_height in ((90, 390, 170), (250, 420, 125), (700, 370, 190), (890, 405, 145)):
+                sway = int(math.sin(tick * 0.03 + fungus_x) * 3)
+                pygame.draw.rect(
+                    surf,
+                    trunk_color,
+                    (fungus_x - 8, fungus_y - fungus_height, 16, ground_y - fungus_y + fungus_height),
+                )
+                pygame.draw.ellipse(
+                    surf,
+                    cap_color,
+                    (fungus_x - 50 + sway, fungus_y - fungus_height - 18, 100, 36),
+                )
+                pygame.draw.rect(surf, glow_color, (fungus_x - 4 + sway, fungus_y - fungus_height - 4, 8, 6))
         for ember_index in range(15):
             drift = int(math.sin(tick * 0.025 + ember_index) * 24)
             ember_x = (ember_index * 73 + drift) % WIDTH
             ember_y = ground_y - int((ember_index * 43 + tick * 0.9) % 390)
-            ember_color = (255, 175, 35) if ember_index % 3 else (255, 75, 20)
+            if theme == "warped_forest":
+                ember_color = (65, 220, 185)
+            elif theme == "crimson_forest":
+                ember_color = (240, 70, 105)
+            else:
+                ember_color = (255, 175, 35) if ember_index % 3 else (255, 75, 20)
             pygame.draw.rect(surf, ember_color, (ember_x, ember_y, 3, 5))
 
     else:
         pygame.draw.circle(surf, (120, 95, 155), (840, 120), 44)
         pygame.draw.circle(surf, world["sky"], (824, 105), 44)
-        pygame.draw.polygon(
-            surf,
-            (38, 31, 55),
-            [(0, ground_y), (0, 405), (165, 390), (235, 430), (370, 415), (445, ground_y)],
-        )
-        pygame.draw.polygon(
-            surf,
-            (45, 38, 65),
-            [(585, ground_y), (650, 420), (805, 395), (895, 425), (1000, 390), (1000, ground_y)],
-        )
+        if theme == "end_city":
+            for tower_x, tower_y, tower_width in ((70, 315, 105), (705, 270, 120), (865, 350, 90)):
+                pygame.draw.rect(
+                    surf,
+                    (100, 70, 125),
+                    (tower_x, tower_y, tower_width, ground_y - tower_y),
+                )
+                pygame.draw.rect(surf, (145, 95, 165), (tower_x - 12, tower_y, tower_width + 24, 18))
+                window_y = tower_y + 42
+                glow = 205 + int((math.sin(tick * 0.06 + tower_x) + 1) * 20)
+                pygame.draw.rect(surf, (glow, glow, 105), (tower_x + 22, window_y, 12, 20))
+                pygame.draw.rect(surf, (glow, glow, 105), (tower_x + tower_width - 34, window_y, 12, 20))
+        else:
+            pygame.draw.polygon(
+                surf,
+                (38, 31, 55),
+                [(0, ground_y), (0, 405), (165, 390), (235, 430), (370, 415), (445, ground_y)],
+            )
+            pygame.draw.polygon(
+                surf,
+                (45, 38, 65),
+                [(585, ground_y), (650, 420), (805, 395), (895, 425), (1000, 390), (1000, ground_y)],
+            )
+            if theme == "end_highlands":
+                for plant_x, plant_y, plant_height in ((110, 390, 105), (310, 425, 75), (735, 365, 135), (920, 405, 90)):
+                    sway = int(math.sin(tick * 0.035 + plant_x) * 3)
+                    pygame.draw.rect(
+                        surf,
+                        (190, 180, 145),
+                        (plant_x - 4, plant_y - plant_height, 8, ground_y - plant_y + plant_height),
+                    )
+                    for branch_y in range(plant_y - plant_height + 20, plant_y, 28):
+                        pygame.draw.line(
+                            surf,
+                            (205, 195, 155),
+                            (plant_x, branch_y),
+                            (plant_x + 18 + sway, branch_y - 10),
+                            5,
+                        )
         for mote_index in range(18):
             drift = math.sin(tick * 0.025 + mote_index) * 20
             mote_x = int((mote_index * 59 + drift) % WIDTH)
@@ -625,15 +792,16 @@ def draw_world_background(surf, world_idx, tick, ground_y):
             )
         elif world_idx == 1:
             detail_y = ground_y + 18 + detail_index % 3 * 8
-            pygame.draw.rect(surf, (180, 130, 65), (detail_x, detail_y, 5, 2))
+            pygame.draw.rect(surf, world["top_plat"], (detail_x, detail_y, 5, 2))
         elif world_idx == 2:
             detail_y = ground_y + 9 + detail_index % 4 * 7
             pygame.draw.rect(surf, (245, 250, 255), (detail_x, detail_y, 18, 3))
         elif world_idx == 3:
             crack_y = ground_y + 12 + detail_index % 4 * 8
+            crack_color = (45, 190, 165) if theme == "warped_forest" else (235, 70, 15)
             pygame.draw.line(
                 surf,
-                (235, 70, 15),
+                crack_color,
                 (detail_x, crack_y),
                 (detail_x + 12, crack_y + 4),
                 2,
@@ -641,6 +809,8 @@ def draw_world_background(surf, world_idx, tick, ground_y):
         else:
             detail_y = ground_y + 10 + detail_index % 5 * 7
             pygame.draw.rect(surf, (95, 70, 125), (detail_x, detail_y, 4, 4))
+
+
 
 
 def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
@@ -1898,7 +2068,7 @@ async def main():
             squash_val += 0.08
             if squash_val > 1.0: squash_val = 1.0
 
-        cur_w = WORLDS[current_world_idx]
+        cur_w = get_world_location(player_data, current_world_idx)
         cur_route = get_route_world(player_data, current_world_idx)
         cur_v_type = cur_w["vehicle_type"]
         has_vehicle = cur_v_type in player_data.get("owned_vehicles", []) if player_data else False
@@ -2104,6 +2274,7 @@ async def main():
             draw_world_background(
                 screen,
                 current_world_idx,
+                cur_w,
                 anim_tick,
                 base_y + 15,
             )

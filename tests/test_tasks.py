@@ -2,6 +2,7 @@ import random
 import unittest
 
 from game_content import (
+    LOCATION_GROUPS,
     LOGIC_TASKS,
     MOB_POOLS,
     PLAYER_PROFILES,
@@ -16,6 +17,7 @@ from game_tasks import (
     create_sage_task,
     create_treasure_tasks,
     get_route_world,
+    get_world_location,
     make_math_task,
     make_review_task,
     pick_logic_task,
@@ -56,6 +58,10 @@ class RouteGenerationTests(unittest.TestCase):
                         MOB_POOLS[world_index],
                     )
                     self.assertIn(world_route["ops"], templates[world_index])
+                    self.assertIn(
+                        world_route["location_id"],
+                        {location["id"] for location in LOCATION_GROUPS[world_index]},
+                    )
                     self.assertGreaterEqual(world_route["mob_step"], 3)
                     self.assertLessEqual(world_route["mob_step"], 8)
 
@@ -90,6 +96,22 @@ class RouteGenerationTests(unittest.TestCase):
         fallback = get_route_world({}, 2)
         self.assertEqual(fallback["ops"], WORLDS[2]["ops"])
         self.assertEqual(fallback["mob_id"], WORLDS[2]["mob_id"])
+
+    def test_saved_location_is_restored_and_old_save_uses_base_location(self):
+        profile = {
+            "marathon_route": [
+                {"location_id": locations[-1]["id"]}
+                for locations in LOCATION_GROUPS
+            ]
+        }
+        for world_index, locations in enumerate(LOCATION_GROUPS):
+            selected = get_world_location(profile, world_index)
+            self.assertEqual(selected["id"], locations[-1]["id"])
+            self.assertEqual(selected["name"], locations[-1]["name"])
+            self.assertIn("vehicle_type", selected)
+
+            fallback = get_world_location({}, world_index)
+            self.assertEqual(fallback["id"], locations[0]["id"])
 
 
 class MathTaskTests(unittest.TestCase):

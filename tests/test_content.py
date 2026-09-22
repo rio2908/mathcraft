@@ -1,6 +1,7 @@
 import unittest
 
 from game_content import (
+    LOCATION_GROUPS,
     MOB_ABILITIES,
     MOB_POOLS,
     PLAYER_PROFILES,
@@ -23,6 +24,13 @@ class ContentInvariantTests(unittest.TestCase):
     def test_each_world_has_its_own_mob_pool(self):
         self.assertEqual(len(MOB_POOLS), len(WORLDS))
         self.assertTrue(all(len(pool) == 3 for pool in MOB_POOLS))
+
+    def test_each_world_has_three_unique_locations(self):
+        self.assertEqual(len(LOCATION_GROUPS), len(WORLDS))
+        for locations in LOCATION_GROUPS:
+            self.assertEqual(len(locations), 3)
+            self.assertEqual(len({location["id"] for location in locations}), 3)
+            self.assertTrue(all(location.get("theme") for location in locations))
 
     def test_player_profiles_keep_separate_difficulties(self):
         self.assertEqual(PLAYER_PROFILES["Ксения"]["difficulty"], "easy")
