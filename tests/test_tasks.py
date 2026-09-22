@@ -18,6 +18,7 @@ from game_tasks import (
     create_treasure_tasks,
     get_route_world,
     get_world_location,
+    is_final_boss_position,
     make_math_task,
     make_review_task,
     pick_logic_task,
@@ -112,6 +113,11 @@ class RouteGenerationTests(unittest.TestCase):
 
             fallback = get_world_location({}, world_index)
             self.assertEqual(fallback["id"], locations[0]["id"])
+
+    def test_only_the_last_island_starts_the_final_boss(self):
+        self.assertTrue(is_final_boss_position(TOTAL_QUESTS, len(WORLDS) - 1, STEPS_PER_WORLD))
+        self.assertFalse(is_final_boss_position(TOTAL_QUESTS - 1, len(WORLDS) - 1, STEPS_PER_WORLD - 1))
+        self.assertFalse(is_final_boss_position(TOTAL_QUESTS, len(WORLDS) - 2, STEPS_PER_WORLD))
 
 
 class MathTaskTests(unittest.TestCase):

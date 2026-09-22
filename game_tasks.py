@@ -34,6 +34,15 @@ def create_treasure_tasks():
     return [world_idx * STEPS_PER_WORLD + random.randint(1, STEPS_PER_WORLD) for world_idx in range(len(WORLDS))]
 
 
+def is_final_boss_position(task_number, world_index, step_in_world):
+    """Return whether the hero has reached the final island where the boss starts."""
+    return (
+        task_number == TOTAL_QUESTS
+        and world_index == len(WORLDS) - 1
+        and step_in_world == STEPS_PER_WORLD
+    )
+
+
 def create_sage_task(route, start_at=1):
     occupied = {
         world_idx * STEPS_PER_WORLD + world.get("mob_step", 5)

@@ -38,6 +38,26 @@ class AppSmokeTests(unittest.TestCase):
             stopper.join(timeout=1)
             if stopper.is_alive():
                 raise RuntimeError("Stop thread did not finish")
+
+            profile = main.get_player(
+                "Ксения",
+                apply_daily_bonus=False,
+                remember_player=False,
+            )
+            for required_field in (
+                "disabled_vehicles",
+                "disabled_artifacts",
+                "luck_potions",
+            ):
+                if required_field not in profile:
+                    raise AssertionError(f"Missing migrated field: {required_field}")
+
+            profile["artifacts"] = ["sharp_sword"]
+            if not main.has_active_artifact(profile, "sharp_sword"):
+                raise AssertionError("Owned artifact should be active by default")
+            profile["disabled_artifacts"] = ["sharp_sword"]
+            if main.has_active_artifact(profile, "sharp_sword"):
+                raise AssertionError("Disabled artifact must not affect combat")
             """
         )
         environment = os.environ.copy()

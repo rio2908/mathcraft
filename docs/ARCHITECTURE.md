@@ -137,8 +137,8 @@ async main(): события → обновление → отрисовка →
 | Экономика | `emeralds`, `streak`, `last_date` |
 | Прогресс | `task_num`, `marathon_elapsed_seconds` |
 | Ошибки | `marathon_errors`, `marathon_error_details`, `boss_penalty_errors` |
-| Снаряжение | `helmet`, `helmet_durability`, `artifacts`, транспорт |
-| Расходники | `totems`, `luck_timer`, `strength_potions` |
+| Снаряжение | `helmet`, `helmet_durability`, `artifacts`, `disabled_artifacts`, транспорт, `disabled_vehicles` |
+| Расходники | `totems`, `luck_potions`, `luck_timer`, `strength_potions` |
 | Питомец | `pet`, `pet_errors`, `pets_lost` |
 | Случайный маршрут | `marathon_route`, `treasure_tasks`, `sage_task` |
 | Состояния встреч | `sage_completed`, `defeated_mob_worlds`, `strength_mob_task` |
@@ -173,6 +173,12 @@ async main(): события → обновление → отрисовка →
 
 Победа отмечает индекс биома в `defeated_mob_worlds`; только после этого моб
 исчезает с маршрута. Поражение сбрасывает `task_num` к первому островку биома.
+На последнем верном ударе запускается короткий визуальный взрыв и отрисовка
+пепла, а кнопка продолжения становится доступна после основной фазы эффекта.
+
+Позиция 50 в последнем биоме является клеткой Дракона. После завершения движения
+на неё `is_final_boss_position()` сразу переводит игру в `BOSS_BATTLE`, поэтому
+обычный пример основного поля на этой позиции не показывается.
 
 Зелье силы сохраняет номер текущего задания в `strength_mob_task`. Благодаря
 этому закрытие приложения посреди боя не расходует эффект впустую. После победы
