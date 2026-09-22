@@ -2,11 +2,35 @@ import pygame
 import random
 import sys
 import math
-import json
 import os
 import asyncio
 from array import array
 from datetime import date, datetime
+
+from game_content import (
+    ARTIFACTS,
+    HELMETS,
+    HELP_PAGES,
+    MOB_ABILITIES,
+    MOB_POOLS,
+    PETS,
+    PLAYER_PROFILES,
+    POTIONS,
+    STEPS_PER_WORLD,
+    TOTAL_QUESTS,
+    WORLDS,
+)
+from game_storage import get_last_player, load_data, save_data, set_last_player
+from game_tasks import (
+    create_adaptive_tasks,
+    create_marathon_route,
+    create_sage_task,
+    create_treasure_tasks,
+    get_route_world,
+    make_math_task as generate_math_task,
+    make_review_task,
+    pick_logic_task,
+)
 
 # Инициализация
 pygame.init()
@@ -101,317 +125,6 @@ RED = (220, 50, 50)
 GREEN = (35, 175, 60)
 PURPLE = (180, 50, 240)
 
-WORLDS = [
-    {"name": "1. Равнины Обычного Мира", "sky": (140, 205, 255), "ground": (85, 140, 50), "plat": (115, 80, 50), "top_plat": (105, 175, 55), "dark_text": True, "ops": ["+", "-"], "vehicle_type": "pig", "v_name": "Свинка", "v_cost": 40, "upg_name": "Бронированная свинка", "upg_cost": 70, "mob_id": "creeper", "mob_name": "Крипер"},
-    {"name": "2. Жаркая Пустыня", "sky": (245, 215, 160), "ground": (210, 165, 85), "plat": (180, 130, 60), "top_plat": (225, 185, 100), "dark_text": True, "ops": ["-", "+"], "vehicle_type": "llama", "v_name": "Лама", "v_cost": 70, "upg_name": "Боевая Лама в попоне", "upg_cost": 110, "mob_id": "skeleton", "mob_name": "Скелет с луком"},
-    {"name": "3. Ледяные Равнины", "sky": (195, 225, 245), "ground": (220, 235, 245), "plat": (140, 190, 230), "top_plat": (175, 220, 255), "dark_text": True, "ops": ["*"], "vehicle_type": "boat", "v_name": "Лодка на льду", "v_cost": 100, "upg_name": "Лодка с сундуком", "upg_cost": 160, "mob_id": "stray", "mob_name": "Зимогор"},
-    {"name": "4. Незер (Нижний Мир)", "sky": (65, 15, 15), "ground": (90, 20, 20), "plat": (50, 10, 10), "top_plat": (240, 90, 20), "dark_text": False, "ops": ["/"], "vehicle_type": "strider", "v_name": "Страйдер по лаве", "v_cost": 140, "upg_name": "Страйдер в седле", "upg_cost": 220, "mob_id": "blaze", "mob_name": "Ифрит Незера"},
-    {"name": "5. Эндер Мир (Край)", "sky": (15, 10, 25), "ground": (30, 25, 45), "plat": (50, 45, 70), "top_plat": (230, 230, 175), "dark_text": False, "ops": ["+", "-", "*", "/"], "vehicle_type": "dragon", "v_name": "Элитры", "v_cost": 200, "upg_name": "Дракон Края", "upg_cost": 300, "mob_id": "enderman", "mob_name": "Эндермен"}
-]
-
-HELMETS = {
-    "none": {"name": "Без шлема", "cost": 0, "max_durability": 0, "repair_cost": 0},
-    "leather": {"name": "Кожаный шлем", "cost": 50, "color": (160, 90, 45), "max_durability": 3, "repair_cost": 20},
-    "iron": {"name": "Железный шлем", "cost": 100, "color": (210, 210, 215), "max_durability": 6, "repair_cost": 40},
-    "diamond": {"name": "Алмазный шлем", "cost": 180, "color": (45, 225, 220), "max_durability": 10, "repair_cost": 75},
-    "netherite": {"name": "Незеритовый шлем", "cost": 300, "color": (65, 55, 65), "max_durability": 16, "repair_cost": 120}
-}
-
-ARTIFACTS = {
-    "sharp_sword": {"name": "Меч «Острота»", "desc": "Уменьшает здоровье каждого моба на 1 сердце.", "cost": 150},
-    "dragon_bow": {"name": "Лук Силы", "desc": "Дракон Края: нужно 4 примера (вместо 5)!", "cost": 220},
-    "end_crystal": {"name": "Кристалл Края", "desc": "Дракон Края: нужно всего 3 примера!", "cost": 350}
-}
-
-POTIONS = {
-    "totem": {"name": "Тотем Бессмертия", "desc": "Спасает от 1 ошибки в бою со стражем или Драконом!", "cost": 75, "max": 3},
-    "luck": {"name": "Зелье Удачи", "desc": "Даёт удвоенные изумруды на следующие 10 примеров!", "cost": 100, "max": 1},
-    "strength_potion": {"name": "Зелье Силы II", "desc": "Один раз ослабляет выбранного моба до 1 сердца.", "cost": 250, "max": 3},
-}
-
-PETS = {
-    "wolf": {
-        "name": "Верный волк",
-        "desc": "В бою снимает 2 жизни. После двух ошибок убегает.",
-        "cost": 240,
-    }
-}
-
-PLAYER_PROFILES = {
-    "Ксения": {"grade": 3, "difficulty": "easy"},
-    "Настя": {"grade": 5, "difficulty": "hard"},
-}
-
-LOGIC_TASKS = {
-    "easy": [
-        {"question": "Продолжи ряд: 2, 4, 6, 8, ?", "choices": [9, 10, 12], "answer": 10},
-        {"question": "У трёх кошек по 2 уха. Сколько ушей?", "choices": [5, 6, 8], "answer": 6},
-        {"question": "Сегодня среда. Какой день будет через 2 дня?", "choices": ["Пятница", "Суббота", "Вторник"], "answer": "Пятница"},
-        {"question": "Что тяжелее: 1 кг железа или 1 кг ваты?", "choices": ["Железо", "Одинаково", "Вата"], "answer": "Одинаково"},
-        {"question": "Продолжи: круг, квадрат, круг, квадрат, ...", "choices": ["Круг", "Треугольник", "Квадрат"], "answer": "Круг"},
-        {"question": "В комнате 4 угла. В каждом углу кот. Сколько котов?", "choices": [4, 8, 16], "answer": 4},
-    ],
-    "hard": [
-        {"question": "Продолжи ряд: 3, 6, 12, 24, ?", "choices": [36, 42, 48], "answer": 48},
-        {"question": "Два отца и два сына нашли 3 ключа — по одному каждому. Сколько их?", "choices": [3, 4, 6], "answer": 3},
-        {"question": "Все драконы летают. Гоша — дракон. Что верно?", "choices": ["Гоша летает", "Гоша плавает", "Неизвестно"], "answer": "Гоша летает"},
-        {"question": "Какое число лишнее: 2, 4, 7, 8, 10?", "choices": [2, 7, 10], "answer": 7},
-        {"question": "У Ани больше монет, чем у Веры, а у Веры больше, чем у Лены. У кого меньше?", "choices": ["У Ани", "У Веры", "У Лены"], "answer": "У Лены"},
-        {"question": "Продолжи ряд: 1, 4, 9, 16, ?", "choices": [20, 25, 32], "answer": 25},
-    ],
-}
-
-HELP_PAGES = [
-    {
-        "title": "КАК НАЧАТЬ ИГРУ",
-        "lines": [
-            "Выбери Ксению (3 класс) или Настю (5 класс).",
-            "Пройди 5 миров и реши всего 50 примеров.",
-            "Решай обычные примеры и находи пропущенные числа.",
-            "На каждом островке ответь верно — и только потом иди дальше.",
-            "В каждом новом марафоне задания и стражи меняются.",
-            "Золотое задание-сокровище приносит больше изумрудов.",
-        ],
-    },
-    {
-        "title": "КАК ЗАРАБОТАТЬ ИЗУМРУДЫ",
-        "lines": [
-            "Правильный ответ: +1 изумруд.",
-            "Серия от 5 верных ответов: по +2 изумруда.",
-            "Задание-сокровище: ещё +2 изумруда.",
-            "Биом без ошибок: +5. Победа над стражем: +5.",
-            "Победа над Драконом: +50 изумрудов.",
-            "Новый рекорд времени: +10. Новый день подряд: +5.",
-        ],
-    },
-    {
-        "title": "МАГАЗИН И ПОМОЩНИКИ",
-        "lines": [
-            "Шлем защищает от усиления Дракона, но теряет прочность.",
-            "Артефакты уменьшают число ответов для победы в боях.",
-            "Тотем спасает от ошибки у стража или Дракона.",
-            "Зелье удачи удваивает награды следующих 10 примеров.",
-            "Зелье силы можно самому применить против одного выбранного моба.",
-            "Волк снимает мобу 2 жизни, но убегает после 2 ошибок.",
-        ],
-    },
-    {
-        "title": "ОСОБЫЕ ИСПЫТАНИЯ",
-        "lines": [
-            "Страж прячется в случайном месте каждого мира.",
-            "У каждого вида стража своя способность — изучи каталог мобов.",
-            "Ошибка у стража без тотема возвращает в начало биома.",
-            "Библиотекарь даёт одну логическую загадку за марафон.",
-            "Верный ответ библиотекарю приносит бесплатный артефакт.",
-            "Дракон повторяет ошибки, а следующий марафон — до трёх из них.",
-        ],
-    },
-]
-
-MOB_POOLS = [
-    [("creeper", "Крипер"), ("zombie", "Зомби"), ("spider", "Паук")],
-    [("skeleton", "Скелет"), ("husk", "Кадавр"), ("cave_spider", "Пещерный паук")],
-    [("stray", "Зимогор"), ("witch", "Ведьма"), ("snow_golem", "Снежный голем")],
-    [("blaze", "Ифрит"), ("magma_cube", "Магмовый куб"), ("piglin", "Пиглин")],
-    [("enderman", "Эндермен"), ("shulker", "Шалкер"), ("endermite", "Эндермит")],
-]
-
-MOB_ABILITIES = {
-    "creeper": {
-        "name": "Короткий фитиль",
-        "desc": "У него только 2 сердца: успей обезвредить!",
-        "kind": "fragile",
-        "base_hp": 2,
-    },
-    "zombie": {
-        "name": "Живучесть",
-        "desc": "У него 4 сердца — понадобится лишний точный удар.",
-        "kind": "armored",
-        "base_hp": 4,
-    },
-    "spider": {
-        "name": "Математическая паутина",
-        "desc": "Все задания в бою будут с пропущенным числом.",
-        "kind": "missing",
-        "base_hp": 3,
-    },
-    "skeleton": {
-        "name": "Меткий выстрел",
-        "desc": "Все задания в бою будут с пропущенным числом.",
-        "kind": "missing",
-        "base_hp": 3,
-    },
-    "husk": {
-        "name": "Песчаная броня",
-        "desc": "У него 4 сердца — понадобится лишний точный удар.",
-        "kind": "armored",
-        "base_hp": 4,
-    },
-    "cave_spider": {
-        "name": "Липкая паутина",
-        "desc": "Все задания в бою будут с пропущенным числом.",
-        "kind": "missing",
-        "base_hp": 3,
-    },
-    "stray": {
-        "name": "Ледяная броня",
-        "desc": "У него 4 сердца — понадобится лишний точный удар.",
-        "kind": "armored",
-        "base_hp": 4,
-    },
-    "witch": {
-        "name": "Зелье хаоса",
-        "desc": "В одном бою смешивает все уже открытые действия.",
-        "kind": "mixed",
-        "base_hp": 3,
-    },
-    "snow_golem": {
-        "name": "Снежная хрупкость",
-        "desc": "У него только 2 сердца, зато он очень меткий.",
-        "kind": "fragile",
-        "base_hp": 2,
-    },
-    "blaze": {
-        "name": "Огненный хаос",
-        "desc": "В одном бою смешивает все уже открытые действия.",
-        "kind": "mixed",
-        "base_hp": 3,
-    },
-    "magma_cube": {
-        "name": "Магмовая броня",
-        "desc": "У него 4 сердца — понадобится лишний точный удар.",
-        "kind": "armored",
-        "base_hp": 4,
-    },
-    "piglin": {
-        "name": "Золотая броня",
-        "desc": "У него 4 сердца — понадобится лишний точный удар.",
-        "kind": "armored",
-        "base_hp": 4,
-    },
-    "enderman": {
-        "name": "Искажение Края",
-        "desc": "Смешивает сложение, вычитание, умножение и деление.",
-        "kind": "mixed",
-        "base_hp": 3,
-    },
-    "shulker": {
-        "name": "Панцирь",
-        "desc": "У него 4 сердца — понадобится лишний точный удар.",
-        "kind": "armored",
-        "base_hp": 4,
-    },
-    "endermite": {
-        "name": "Путаница Края",
-        "desc": "Все задания в бою будут с пропущенным числом.",
-        "kind": "missing",
-        "base_hp": 3,
-    },
-}
-
-ROUTE_TEMPLATES = {
-    "easy": [
-        [["+"], ["-"], ["+", "-"]],
-        [["+", "-"], ["+"], ["-"]],
-        [["*"], ["*", "+"]],
-        [["/"], ["*", "/"]],
-        [["+", "-", "*", "/"], ["+", "-", "*"]],
-    ],
-    "hard": [
-        [["+", "-"], ["+"], ["-"]],
-        [["+", "-", "*"], ["+", "*"]],
-        [["*", "/"], ["*", "+", "-"]],
-        [["/", "*", "-"], ["/", "+"]],
-        [["+", "-", "*", "/"], ["*", "/", "+"]],
-    ],
-}
-
-def create_marathon_route(profile_name):
-    difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
-    route = []
-    for world_idx, operation_variants in enumerate(ROUTE_TEMPLATES[difficulty]):
-        mob_id, mob_name = random.choice(MOB_POOLS[world_idx])
-        route.append({
-            "ops": list(random.choice(operation_variants)),
-            "mob_id": mob_id,
-            "mob_name": mob_name,
-            "mob_step": random.randint(3, 8),
-        })
-    return route
-
-def create_treasure_tasks():
-    return [world_idx * 10 + random.randint(1, 10) for world_idx in range(5)]
-
-def create_sage_task(route, start_at=1):
-    occupied = {
-        world_idx * 10 + world.get("mob_step", 5)
-        for world_idx, world in enumerate(route)
-    }
-    candidates = [
-        task for task in range(max(2, start_at), TOTAL_QUESTS)
-        if task % STEPS_PER_WORLD != 0 and task not in occupied
-    ]
-    return random.choice(candidates) if candidates else None
-
-def create_adaptive_tasks(profile, count=3):
-    """Replace a few future tasks with the player's most troublesome errors."""
-    history_details = []
-    for game in profile.get("game_history", []):
-        history_details.extend(game.get("error_details", []))
-
-    current_details = profile.get("marathon_error_details", [])
-    last_game_details = (
-        profile.get("game_history", [])[-1].get("error_details", [])
-        if profile.get("game_history") else []
-    )
-    if current_details != last_game_details:
-        history_details.extend(current_details)
-
-    ranked = {}
-    for order, detail in enumerate(history_details):
-        expression = detail.get("expr")
-        answer = detail.get("correct")
-        if not expression or not isinstance(answer, int):
-            continue
-        key = (expression, answer)
-        if key not in ranked:
-            ranked[key] = {"count": 0, "last_seen": order, "detail": detail}
-        ranked[key]["count"] += 1
-        ranked[key]["last_seen"] = order
-        ranked[key]["detail"] = detail
-
-    difficult = sorted(
-        ranked.values(),
-        key=lambda item: (item["count"], item["last_seen"]),
-        reverse=True,
-    )[:count]
-    if not difficult:
-        return {}
-
-    selected_worlds = random.sample(range(len(WORLDS)), len(difficult))
-    task_numbers = [world_idx * 10 + random.randint(1, 10) for world_idx in selected_worlds]
-    adaptive = {}
-    for task_number, item in zip(task_numbers, difficult):
-        detail = item["detail"]
-        adaptive[str(task_number)] = {
-            "expr": detail["expr"],
-            "correct": detail["correct"],
-            "wrong": detail.get("wrong"),
-        }
-    return adaptive
-
-def get_route_world(profile, world_idx):
-    route = profile.get("marathon_route", []) if profile else []
-    if 0 <= world_idx < len(route):
-        return route[world_idx]
-    return {
-        "ops": WORLDS[world_idx]["ops"],
-        "mob_id": WORLDS[world_idx]["mob_id"],
-        "mob_name": WORLDS[world_idx]["mob_name"],
-    }
-
-SAVE_FILE = "mc_math_save.json"
-LAST_PLAYER_FILE = "mc_last_player.txt"
 
 def request_browser_fullscreen():
     if sys.platform == "emscripten":
@@ -423,38 +136,6 @@ def request_browser_fullscreen():
         except Exception:
             pass
 
-def load_data():
-    if os.path.exists(SAVE_FILE):
-        try:
-            with open(SAVE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_data(data):
-    try:
-        with open(SAVE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    except Exception:
-        pass
-
-def get_last_player():
-    if os.path.exists(LAST_PLAYER_FILE):
-        try:
-            with open(LAST_PLAYER_FILE, "r", encoding="utf-8") as f:
-                n = f.read().strip()
-                if n: return n
-        except Exception:
-            return None
-    return None
-
-def set_last_player(name):
-    try:
-        with open(LAST_PLAYER_FILE, "w", encoding="utf-8") as f:
-            f.write(name.strip())
-    except Exception:
-        pass
 
 def get_player(name, apply_daily_bonus=True, remember_player=True):
     profiles = load_data()
@@ -585,104 +266,10 @@ def register_pet_error(profile):
     profile["pet_errors"] = errors
     return {"ran_away": False, "pet_name": PETS.get(pet_id, {}).get("name", "Питомец"), "errors": errors}
 
-def make_answer_choices(answer, minimum, maximum):
-    """Build three unique nearby answers, including the correct one."""
-    variants = {answer}
-    offsets = [-3, -2, -1, 1, 2, 3]
-    random.shuffle(offsets)
-    for offset in offsets:
-        candidate = answer + offset
-        if minimum <= candidate <= maximum:
-            variants.add(candidate)
-        if len(variants) == 3:
-            break
-    if len(variants) < 3:
-        for candidate in range(minimum, maximum + 1):
-            variants.add(candidate)
-            if len(variants) == 3:
-                break
-    choices = list(variants)
-    random.shuffle(choices)
-    return choices
-
 def make_math_task(ops_list, force_missing=False):
-    op = random.choice(ops_list)
-    is_hard = PLAYER_PROFILES.get(globals().get("player_name"), {}).get("difficulty") == "hard"
-    max_answer = 100 if is_hard else 20
+    """Generate a task for the currently selected player."""
+    return generate_math_task(ops_list, player_name, force_missing=force_missing)
 
-    if op == "+":
-        ans = random.randint(20, max_answer) if is_hard else random.randint(5, max_answer)
-        a = random.randint(5 if is_hard else 2, ans - (5 if is_hard else 2))
-        b = ans - a
-        sym = "+"
-    elif op == "-":
-        a = random.randint(20, max_answer) if is_hard else random.randint(6, max_answer)
-        b = random.randint(5 if is_hard else 2, a - (5 if is_hard else 2))
-        ans = a - b
-        sym = "-"
-    elif op == "*":
-        pairs = [
-            (x, y)
-            for x in range(2, 11)
-            for y in range(2, 11)
-            if is_hard or x * y <= 20
-        ]
-        a, b = random.choice(pairs)
-        ans = a * b
-        sym = "x"
-    else:
-        div_pairs = []
-        for d in range(2, 11):
-            max_result = 10 if is_hard else (20 // d)
-            for res in range(2, max_result + 1):
-                div_pairs.append((d * res, d, res))
-        a, b, ans = random.choice(div_pairs)
-        sym = ":"
-
-    # Roughly every fourth task asks for an operand instead of the result.
-    # The equation stays valid and uses the same difficulty limits as a normal task.
-    if force_missing or random.random() < 0.25:
-        hide_left = random.choice([True, False])
-        missing_answer = a if hide_left else b
-        missing_min = 2
-        if op in ("*", "/") and not (op == "/" and hide_left):
-            missing_max = 10
-        else:
-            missing_max = max_answer
-        left = "?" if hide_left else str(a)
-        right = str(b) if hide_left else "?"
-        equation = f"{left} {sym} {right} = {ans}"
-        return (
-            equation,
-            missing_answer,
-            make_answer_choices(missing_answer, missing_min, missing_max),
-            op,
-            equation,
-        )
-
-    return (
-        f"{a} {sym} {b} = ?",
-        ans,
-        make_answer_choices(ans, 1, max_answer),
-        op,
-        f"{a} {sym} {b}",
-    )
-
-def make_review_task(error_detail):
-    answer = error_detail["correct"]
-    variants = {answer}
-    wrong_answer = error_detail.get("wrong")
-    if isinstance(wrong_answer, int) and wrong_answer != answer:
-        variants.add(wrong_answer)
-    while len(variants) < 3:
-        candidate = answer + random.choice([-3, -2, -1, 1, 2, 3])
-        if candidate >= 0:
-            variants.add(candidate)
-    choices = list(variants)
-    random.shuffle(choices)
-    expression = error_detail["expr"]
-    question = expression if "?" in expression else f"{expression} = ?"
-    return question, answer, choices, "review", expression
 
 def make_task_for_step(profile, task_number):
     adaptive = profile.get("adaptive_tasks", {}) if profile else {}
@@ -693,13 +280,6 @@ def make_task_for_step(profile, task_number):
     world_idx, _ = get_task_position(task_number)
     return make_math_task(get_route_world(profile, world_idx)["ops"])
 
-def pick_logic_task(profile_name, previous_question=None):
-    difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
-    available = [task for task in LOGIC_TASKS[difficulty] if task["question"] != previous_question]
-    task = random.choice(available or LOGIC_TASKS[difficulty])
-    choices = list(task["choices"])
-    random.shuffle(choices)
-    return task["question"], task["answer"], choices
 
 def draw_centered_wrapped_text(surf, text, font, color, center_x, top_y, max_width, line_gap=4):
     words = text.split()
@@ -890,6 +470,178 @@ def get_shop_row_rects(index, total_rows=4):
     slot_rect = pygame.Rect(row_rect.x + 8, row_rect.y + 6, 50, 50)
     btn_rect = pygame.Rect(row_rect.right - 125, row_rect.y + 14, 115, 34)
     return row_rect, slot_rect, btn_rect
+
+def draw_pixel_cloud(surf, x, y, scale=1, color=(245, 250, 255)):
+    """Draw a small blocky cloud used by animated world backgrounds."""
+    blocks = (
+        (0, 8, 58, 14),
+        (12, 0, 22, 20),
+        (32, 4, 18, 16),
+    )
+    for offset_x, offset_y, width, height in blocks:
+        pygame.draw.rect(
+            surf,
+            color,
+            (
+                int(x + offset_x * scale),
+                int(y + offset_y * scale),
+                int(width * scale),
+                int(height * scale),
+            ),
+        )
+
+
+def draw_world_background(surf, world_idx, tick, ground_y):
+    """Draw a lightweight animated background for the current biome."""
+    world = WORLDS[world_idx]
+    surf.fill(world["sky"])
+
+    if world_idx == 0:
+        pygame.draw.circle(surf, (255, 238, 120), (845, 125), 43)
+        pygame.draw.polygon(
+            surf,
+            (105, 175, 105),
+            [(0, ground_y), (0, 390), (150, 315), (300, 405), (455, 325), (620, ground_y)],
+        )
+        pygame.draw.polygon(
+            surf,
+            (80, 150, 85),
+            [(430, ground_y), (610, 350), (735, 405), (875, 325), (1000, 395), (1000, ground_y)],
+        )
+        for cloud_index, (start_x, cloud_y, scale) in enumerate(
+            ((40, 118, 1.0), (390, 165, 0.75), (720, 76, 0.9))
+        ):
+            speed = 0.28 + cloud_index * 0.04
+            cloud_x = (start_x + tick * speed) % (WIDTH + 130) - 70
+            draw_pixel_cloud(surf, cloud_x, cloud_y, scale)
+
+    elif world_idx == 1:
+        pygame.draw.circle(surf, (255, 235, 125), (820, 115), 52)
+        pygame.draw.polygon(
+            surf,
+            (225, 185, 105),
+            [(0, ground_y), (0, 410), (210, 350), (430, 420), (690, 345), (1000, 410), (1000, ground_y)],
+        )
+        pygame.draw.polygon(
+            surf,
+            (195, 145, 75),
+            [(0, ground_y), (180, 430), (350, 455), (610, 395), (820, 450), (1000, 415), (1000, ground_y)],
+        )
+        for particle_index in range(13):
+            sand_x = int((particle_index * 83 + tick * 1.1) % (WIDTH + 20) - 10)
+            sand_y = 120 + (particle_index * 47) % 300
+            sand_y += int(math.sin(tick * 0.04 + particle_index) * 8)
+            pygame.draw.rect(surf, (190, 145, 80), (sand_x, sand_y, 3, 3))
+
+    elif world_idx == 2:
+        pygame.draw.circle(surf, (235, 245, 255), (835, 115), 38)
+        pygame.draw.polygon(
+            surf,
+            (155, 195, 225),
+            [(0, ground_y), (135, 270), (290, ground_y), (455, 235), (655, ground_y)],
+        )
+        pygame.draw.polygon(
+            surf,
+            (235, 245, 250),
+            [(68, 385), (135, 270), (205, 375), (455, 235), (545, 350), (655, ground_y)],
+        )
+        pygame.draw.polygon(
+            surf,
+            (135, 180, 215),
+            [(520, ground_y), (735, 320), (855, 410), (935, 295), (1000, 360), (1000, ground_y)],
+        )
+        for snow_index in range(18):
+            wind = math.sin(tick * 0.03 + snow_index) * 18
+            snow_x = int((snow_index * 61 + tick * 0.45 + wind) % WIDTH)
+            snow_y = int((snow_index * 37 + tick * 0.8) % ground_y)
+            snow_size = 2 + snow_index % 2
+            pygame.draw.rect(surf, WHITE, (snow_x, snow_y, snow_size, snow_size))
+
+    elif world_idx == 3:
+        pygame.draw.circle(surf, (190, 45, 20), (820, 145), 58)
+        pillars = (
+            (35, 80, 210),
+            (205, 110, 150),
+            (690, 95, 230),
+            (875, 75, 175),
+        )
+        for pillar_index, (pillar_x, pillar_width, pillar_height) in enumerate(pillars):
+            pillar_color = (72 + pillar_index * 4, 18, 18)
+            pygame.draw.rect(
+                surf,
+                pillar_color,
+                (pillar_x, ground_y - pillar_height, pillar_width, pillar_height),
+            )
+            pygame.draw.rect(
+                surf,
+                (115, 28, 18),
+                (pillar_x, ground_y - pillar_height, pillar_width, 8),
+            )
+        for ember_index in range(15):
+            drift = int(math.sin(tick * 0.025 + ember_index) * 24)
+            ember_x = (ember_index * 73 + drift) % WIDTH
+            ember_y = ground_y - int((ember_index * 43 + tick * 0.9) % 390)
+            ember_color = (255, 175, 35) if ember_index % 3 else (255, 75, 20)
+            pygame.draw.rect(surf, ember_color, (ember_x, ember_y, 3, 5))
+
+    else:
+        pygame.draw.circle(surf, (120, 95, 155), (840, 120), 44)
+        pygame.draw.circle(surf, world["sky"], (824, 105), 44)
+        pygame.draw.polygon(
+            surf,
+            (38, 31, 55),
+            [(0, ground_y), (0, 405), (165, 390), (235, 430), (370, 415), (445, ground_y)],
+        )
+        pygame.draw.polygon(
+            surf,
+            (45, 38, 65),
+            [(585, ground_y), (650, 420), (805, 395), (895, 425), (1000, 390), (1000, ground_y)],
+        )
+        for mote_index in range(18):
+            drift = math.sin(tick * 0.025 + mote_index) * 20
+            mote_x = int((mote_index * 59 + drift) % WIDTH)
+            mote_y = 85 + (mote_index * 41) % 350
+            pulse = (tick // 12 + mote_index) % 3
+            mote_color = ((155, 90, 220), (205, 145, 255), (105, 70, 175))[pulse]
+            pygame.draw.rect(surf, mote_color, (mote_x, mote_y, 3, 3))
+
+    pygame.draw.rect(
+        surf,
+        world["ground"],
+        (0, ground_y, WIDTH, HEIGHT - ground_y),
+    )
+    pygame.draw.rect(surf, (40, 30, 20), (0, ground_y - 2, WIDTH, 3))
+
+    for detail_index in range(22):
+        detail_x = detail_index * 49 + (detail_index % 3) * 7
+        if world_idx == 0:
+            sway = int(math.sin(tick * 0.06 + detail_index) * 2)
+            pygame.draw.line(
+                surf,
+                (55, 115, 40),
+                (detail_x, ground_y + 20),
+                (detail_x + sway, ground_y + 10),
+                2,
+            )
+        elif world_idx == 1:
+            detail_y = ground_y + 18 + detail_index % 3 * 8
+            pygame.draw.rect(surf, (180, 130, 65), (detail_x, detail_y, 5, 2))
+        elif world_idx == 2:
+            detail_y = ground_y + 9 + detail_index % 4 * 7
+            pygame.draw.rect(surf, (245, 250, 255), (detail_x, detail_y, 18, 3))
+        elif world_idx == 3:
+            crack_y = ground_y + 12 + detail_index % 4 * 8
+            pygame.draw.line(
+                surf,
+                (235, 70, 15),
+                (detail_x, crack_y),
+                (detail_x + 12, crack_y + 4),
+                2,
+            )
+        else:
+            detail_y = ground_y + 10 + detail_index % 5 * 7
+            pygame.draw.rect(surf, (95, 70, 125), (detail_x, detail_y, 4, 4))
+
 
 def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
     bob = int(math.sin(anim_tick * 0.15) * 3)
@@ -1147,8 +899,6 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         pygame.draw.rect(surf, (30, 30, 30), (sx - 13, sy - 16, 26, 18), 1)
 
 # ==================== ПЕРЕМЕННЫЕ И СОСТОЯНИЕ ====================
-TOTAL_QUESTS = 50
-STEPS_PER_WORLD = 10
 TIMED_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE"}
 base_y = 490
 island_spacing = (WIDTH - 190) // (STEPS_PER_WORLD - 1)
@@ -2351,9 +2101,12 @@ async def main():
                 draw_mc_button(screen, catalog_next_btn, "Дальше >", catalog_next_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
 
         elif game_state == "GAME":
-            screen.fill(cur_w["sky"])
-            pygame.draw.rect(screen, cur_w["ground"], (0, base_y + 15, WIDTH, HEIGHT - base_y - 15))
-            pygame.draw.rect(screen, (40, 30, 20), (0, base_y + 13, WIDTH, 3))
+            draw_world_background(
+                screen,
+                current_world_idx,
+                anim_tick,
+                base_y + 15,
+            )
 
             for i, (px, py) in enumerate(platforms):
                 if i == 0:
@@ -2377,9 +2130,6 @@ async def main():
                 if current_world_idx == 4 and i == 10 and task_num <= TOTAL_QUESTS:
                     pygame.draw.circle(screen, PURPLE, (px, py - 30), 12)
                     pygame.draw.circle(screen, WHITE, (px, py - 30), 4)
-
-                num_lbl = FONT_SMALL.render(str(current_world_idx * 10 + i), True, WHITE if not cur_w["dark_text"] else DARK_TEXT)
-                screen.blit(num_lbl, (px - num_lbl.get_width()//2, py + 30))
 
             for pt in particles:
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))

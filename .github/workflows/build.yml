@@ -34,8 +34,11 @@ jobs:
 
       - name: Validate Python source
         run: |
-          python -m py_compile main.py
-          python -m pyflakes main.py
+          python -m py_compile main.py game_content.py game_tasks.py game_storage.py
+          python -m pyflakes main.py game_content.py game_tasks.py game_storage.py
+
+      - name: Run automated tests
+        run: python -m unittest discover -s tests -v
 
       - name: Build Web Game with Pygbag
         run: python -m pygbag --build --ume_block 0 .
