@@ -1,6 +1,7 @@
 import unittest
 
 from game_content import (
+    ARTIFACTS,
     LOCATION_GROUPS,
     MOB_ABILITIES,
     MOB_POOLS,
@@ -21,9 +22,24 @@ class ContentInvariantTests(unittest.TestCase):
         mob_ids = {mob_id for pool in MOB_POOLS for mob_id, _ in pool}
         self.assertEqual(mob_ids, set(MOB_ABILITIES))
 
+    def test_artifact_charge_balance(self):
+        for info in ARTIFACTS.values():
+            self.assertGreater(info["max_charges"], 0)
+            self.assertGreater(info["repair_cost"], 0)
+            self.assertLess(info["repair_cost"], info["cost"])
+        self.assertEqual(
+            {item for item, info in ARTIFACTS.items() if info.get("librarian")},
+            {"sharp_sword", "hint_book"},
+        )
+        self.assertEqual(ARTIFACTS["frog_wand"]["max_charges"], 2)
+        self.assertNotIn("librarian", ARTIFACTS["frog_wand"])
+        self.assertEqual(ARTIFACTS["heat_rune"]["max_charges"], 3)
+        self.assertNotIn("librarian", ARTIFACTS["heat_rune"])
+
     def test_each_world_has_its_own_mob_pool(self):
         self.assertEqual(len(MOB_POOLS), len(WORLDS))
-        self.assertTrue(all(len(pool) == 3 for pool in MOB_POOLS))
+        self.assertTrue(all(len(pool) >= 3 for pool in MOB_POOLS))
+        self.assertIn(("ice_golem", "Ледяной голем"), MOB_POOLS[2])
 
     def test_each_world_has_three_unique_locations(self):
         self.assertEqual(len(LOCATION_GROUPS), len(WORLDS))

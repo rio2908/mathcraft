@@ -2,6 +2,24 @@
 
 import random
 
+
+def advance_mob_regeneration(hp, max_hp, elapsed, delta, heal_seconds):
+    """Restore one heart per interval after damage, stopping at full health."""
+    if hp <= 0 or hp >= max_hp:
+        return hp, 0.0, 0
+    elapsed += max(0.0, delta)
+    healed = min(max_hp - hp, int((elapsed + 1e-9) // heal_seconds))
+    hp += healed
+    elapsed = 0.0 if hp >= max_hp else elapsed - healed * heal_seconds
+    return hp, elapsed, healed
+
+
+def advance_heat_rune(remaining, delta):
+    """Return remaining rune time and unprotected time for regeneration."""
+    delta = max(0.0, delta)
+    protected = min(max(0.0, remaining), delta)
+    return max(0.0, remaining - protected), delta - protected
+
 from game_content import (
     LOCATION_GROUPS,
     LOGIC_TASKS,
@@ -14,8 +32,14 @@ from game_content import (
 )
 
 
-def create_marathon_route(profile_name):
-    difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
+def get_profile_difficulty(profile_name, difficulty=None):
+    if difficulty in ("easy", "hard"):
+        return difficulty
+    return PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
+
+
+def create_marathon_route(profile_name, difficulty=None):
+    difficulty = get_profile_difficulty(profile_name, difficulty)
     route = []
     for world_idx, operation_variants in enumerate(ROUTE_TEMPLATES[difficulty]):
         mob_id, mob_name = random.choice(MOB_POOLS[world_idx])
@@ -155,9 +179,9 @@ def make_answer_choices(answer, minimum, maximum):
     return choices
 
 
-def make_math_task(ops_list, profile_name, force_missing=False):
+def make_math_task(ops_list, profile_name, force_missing=False, difficulty=None):
     op = random.choice(ops_list)
-    is_hard = PLAYER_PROFILES.get(profile_name, {}).get("difficulty") == "hard"
+    is_hard = get_profile_difficulty(profile_name, difficulty) == "hard"
     max_answer = 100 if is_hard else 20
 
     if op == "+":
@@ -234,8 +258,8 @@ def make_review_task(error_detail):
     return question, answer, choices, "review", expression
 
 
-def pick_logic_task(profile_name, previous_question=None):
-    difficulty = PLAYER_PROFILES.get(profile_name, PLAYER_PROFILES["Ксения"])["difficulty"]
+def pick_logic_task(profile_name, previous_question=None, difficulty=None):
+    difficulty = get_profile_difficulty(profile_name, difficulty)
     available = [task for task in LOGIC_TASKS[difficulty] if task["question"] != previous_question]
     task = random.choice(available or LOGIC_TASKS[difficulty])
     choices = list(task["choices"])

@@ -12,6 +12,8 @@ from game_content import (
     WORLDS,
 )
 from game_tasks import (
+    advance_heat_rune,
+    advance_mob_regeneration,
     create_adaptive_tasks,
     create_marathon_route,
     create_sage_task,
@@ -23,6 +25,43 @@ from game_tasks import (
     make_review_task,
     pick_logic_task,
 )
+
+
+class MobRegenerationTests(unittest.TestCase):
+    def test_heat_rune_pauses_then_resumes_existing_countdown(self):
+        remaining, unprotected = advance_heat_rune(8.0, 3.0)
+        self.assertEqual((remaining, unprotected), (5.0, 0.0))
+        hp, elapsed, healed = advance_mob_regeneration(2, 3, 1.5, unprotected, 4.0)
+        self.assertEqual((hp, elapsed, healed), (2, 1.5, 0))
+        remaining, unprotected = advance_heat_rune(remaining, 6.0)
+        self.assertEqual((remaining, unprotected), (0.0, 1.0))
+        hp, elapsed, healed = advance_mob_regeneration(hp, 3, elapsed, unprotected, 4.0)
+        self.assertEqual((hp, elapsed, healed), (2, 2.5, 0))
+        hp, elapsed, healed = advance_mob_regeneration(hp, 3, elapsed, 1.5, 4.0)
+        self.assertEqual((hp, elapsed, healed), (3, 0.0, 1))
+
+    def test_three_quick_hits_defeat_golem(self):
+        hp = 3
+        elapsed = 0.0
+        for delay in (0.0, 3.9, 3.9):
+            hp, elapsed, healed = advance_mob_regeneration(hp, 3, elapsed, delay, 4.0)
+            self.assertEqual(healed, 0)
+            hp -= 1
+            elapsed = 0.0  # Correct answer starts a fresh four-second window.
+        self.assertEqual(hp, 0)
+
+    def test_heals_on_four_second_boundary_and_repeats_until_full(self):
+        hp, elapsed, healed = advance_mob_regeneration(1, 3, 0.0, 3.99, 4.0)
+        self.assertEqual((hp, healed), (1, 0))
+        hp, elapsed, healed = advance_mob_regeneration(hp, 3, elapsed, 0.01, 4.0)
+        self.assertEqual((hp, healed), (2, 1))
+        hp, elapsed, healed = advance_mob_regeneration(hp, 3, elapsed, 4.0, 4.0)
+        self.assertEqual((hp, elapsed, healed), (3, 0.0, 1))
+
+    def test_never_revives_defeated_mob_or_exceeds_maximum(self):
+        self.assertEqual(advance_mob_regeneration(0, 3, 0.0, 10.0, 4.0), (0, 0.0, 0))
+        self.assertEqual(advance_mob_regeneration(2, 2, 0.0, 10.0, 4.0), (2, 0.0, 0))
+        self.assertEqual(advance_mob_regeneration(1, 3, 0.0, 20.0, 4.0), (3, 0.0, 2))
 
 
 def calculate(expression):
@@ -65,6 +104,11 @@ class RouteGenerationTests(unittest.TestCase):
                     )
                     self.assertGreaterEqual(world_route["mob_step"], 3)
                     self.assertLessEqual(world_route["mob_step"], 8)
+
+    def test_custom_profile_uses_saved_difficulty(self):
+        route = create_marathon_route("Alex", difficulty="hard")
+        for world_index, world_route in enumerate(route):
+            self.assertIn(world_route["ops"], ROUTE_TEMPLATES["hard"][world_index])
 
     def test_treasure_has_one_task_in_each_world(self):
         treasure_tasks = create_treasure_tasks()
@@ -169,6 +213,13 @@ class MathTaskTests(unittest.TestCase):
         ]
         self.assertLessEqual(max(easy_answers), 20)
         self.assertGreater(max(hard_answers), 20)
+
+    def test_custom_profile_math_uses_saved_difficulty(self):
+        answers = [
+            make_math_task(["+"], "Alex", difficulty="hard")[1]
+            for _ in range(100)
+        ]
+        self.assertGreater(max(answers), 20)
 
     def test_review_task_keeps_correct_and_wrong_answers(self):
         task = make_review_task({
