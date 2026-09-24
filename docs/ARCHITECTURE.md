@@ -27,7 +27,7 @@ async main(): события → обновление → отрисовка →
 - `game_content.py` содержит только константы и таблицы: биомы, предметы,
   профили сложности, логические задачи, мобов и шаблоны маршрутов.
 - `game_tasks.py` содержит генераторы без зависимости от Pygame: маршрут,
-  сокровища, библиотекаря, адаптивные повторы и математические задания.
+  сундуки, библиотекаря, адаптивные повторы и математические задания.
 - `game_storage.py` отвечает только за чтение и запись
   `mc_math_save.json` и `mc_last_player.txt`.
 - `game_music.py` синтезирует короткие оригинальные музыкальные петли для
@@ -59,6 +59,7 @@ async main(): события → обновление → отрисовка →
 | `GAME` | Основной маршрут и задания островков | да |
 | `MOB_BATTLE` | Бой со стражем биома | да |
 | `SAGE_CHALLENGE` | Задача библиотекаря | да |
+| `CHEST_LOCK` | Замок сундука после трёх чистых биомов | да |
 | `REVIEW` | Итоги завершённого биома | нет |
 | `BOSS_BATTLE` | Финальная битва с Драконом | да до победы |
 | `FINAL_STATS` | Итоги текущего марафона | нет |
@@ -119,12 +120,20 @@ async main(): события → обновление → отрисовка →
 
 Дополнительно создаются:
 
-- одно задание-сокровище на биом;
+- сундук в следующем биоме после трёх чистых биомов подряд;
 - одна позиция библиотекаря, не совпадающая с мобом и границей биома;
 - до трёх адаптивных заданий следующего марафона.
 
 Все эти значения сохраняются. Нельзя генерировать их заново при каждом запуске,
 иначе содержимое незавершённой игры изменится.
+
+`finish_biome()` фиксирует результат биома до перехода на следующий экран.
+`biome_had_error` остаётся истинным после возврата в начало биома, поэтому
+переигрывание не превращает его в чистый. Каждый третий чистый биом назначает
+`chest_task` в следующем; если третьим был Край, используется
+`chest_pending_next_marathon`. Награда и варианты ключей сохраняются в
+`chest_challenge` до закрытия результата, поэтому повторный запуск не создаёт
+нового содержимого.
 
 ## 7. Сохранения
 
@@ -153,9 +162,10 @@ async main(): события → обновление → отрисовка →
 | Прогресс | `task_num`, `marathon_elapsed_seconds` |
 | Ошибки | `marathon_errors`, `marathon_error_details`, `boss_penalty_errors` |
 | Снаряжение | `helmet`, `helmet_durability`, `artifacts`, `artifact_charges`, `disabled_artifacts`, транспорт, `disabled_vehicles` |
-| Расходники | `totems`, `luck_potions`, `luck_timer`, `strength_potions` |
+| Расходники | `totems`, `luck_potions`, `luck_timer`, `strength_potions`, `food_apples`, `food_bread`, `hero_hearts` |
 | Питомец | `pet`, `pet_errors`, `pets_lost` |
-| Случайный маршрут | `marathon_route`, `treasure_tasks`, `sage_task` |
+| Случайный маршрут | `marathon_route`, `sage_task`, `chest_task` |
+| Серия сундука | `clean_biome_streak`, `biome_had_error`, `chest_pending_next_marathon`, `chest_challenge`, `chest_seen_questions` |
 | Состояния встреч | `sage_completed`, `defeated_mob_worlds`, `strength_mob_task`, `frog_mob_task`, `heat_rune_task`, `heat_rune_seconds_left`, `heat_rune_mob_hp`, `heat_rune_regen_elapsed`, `sharp_sword_task`, `boss_artifact_choice` |
 | Обучение | `adaptive_tasks`, `game_history` |
 

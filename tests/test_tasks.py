@@ -2,6 +2,7 @@ import random
 import unittest
 
 from game_content import (
+    CHEST_KEY_TASKS,
     LOCATION_GROUPS,
     LOGIC_TASKS,
     MOB_POOLS,
@@ -12,18 +13,20 @@ from game_content import (
     WORLDS,
 )
 from game_tasks import (
+    advance_clean_biome_streak,
     advance_heat_rune,
     advance_mob_regeneration,
     create_adaptive_tasks,
+    create_chest_task,
     create_marathon_route,
     create_sage_task,
-    create_treasure_tasks,
     get_route_world,
     get_world_location,
     is_final_boss_position,
     make_math_task,
     make_review_task,
     pick_logic_task,
+    pick_chest_key_task,
     pick_logic_task_with_history,
 )
 
@@ -111,18 +114,43 @@ class RouteGenerationTests(unittest.TestCase):
         for world_index, world_route in enumerate(route):
             self.assertIn(world_route["ops"], ROUTE_TEMPLATES["hard"][world_index])
 
-    def test_treasure_has_one_task_in_each_world(self):
-        treasure_tasks = create_treasure_tasks()
-        self.assertEqual(len(treasure_tasks), len(WORLDS))
-        for world_index, task_number in enumerate(treasure_tasks):
-            self.assertGreaterEqual(
-                task_number,
-                world_index * STEPS_PER_WORLD + 1,
-            )
-            self.assertLessEqual(
-                task_number,
-                (world_index + 1) * STEPS_PER_WORLD,
-            )
+    def test_chest_is_placed_away_from_mob_librarian_and_world_end(self):
+        route = create_marathon_route("Ксения")
+        for world_index in range(len(WORLDS)):
+            sage_task = world_index * STEPS_PER_WORLD + 2
+            chest_task = create_chest_task(route, world_index, sage_task)
+            self.assertGreaterEqual(chest_task, world_index * STEPS_PER_WORLD + 2)
+            self.assertLess(chest_task, (world_index + 1) * STEPS_PER_WORLD)
+            self.assertNotEqual(chest_task, sage_task)
+            self.assertNotEqual(chest_task, world_index * STEPS_PER_WORLD + route[world_index]["mob_step"])
+
+    def test_three_consecutive_clean_biomes_unlock_one_chest(self):
+        self.assertEqual(advance_clean_biome_streak(0, False), (1, False))
+        self.assertEqual(advance_clean_biome_streak(1, False), (2, False))
+        self.assertEqual(advance_clean_biome_streak(2, True), (0, False))
+        self.assertEqual(advance_clean_biome_streak(2, False), (0, True))
+
+    def test_chest_key_pools_have_thirty_unique_valid_puzzles(self):
+        for difficulty in ("easy", "hard"):
+            tasks = CHEST_KEY_TASKS[difficulty]
+            self.assertEqual(len(tasks), 30)
+            self.assertEqual(len({item[0] for item in tasks}), 30)
+            for _, choices, answer in tasks:
+                self.assertEqual(len(choices), 3)
+                self.assertEqual(len(set(choices)), 3)
+                self.assertIn(answer, choices)
+
+    def test_chest_keys_do_not_repeat_until_all_thirty_are_seen(self):
+        for difficulty in ("easy", "hard"):
+            history = []
+            for _ in range(30):
+                question, answer, choices, history = pick_chest_key_task(difficulty, history)
+                self.assertEqual(len(history), len(set(history)))
+                self.assertIn(answer, choices)
+            last = history[-1]
+            question, _, _, history = pick_chest_key_task(difficulty, history)
+            self.assertNotEqual(question, last)
+            self.assertEqual(history, [question])
 
     def test_librarian_avoids_mobs_and_world_boundaries(self):
         route = create_marathon_route("Ксения")

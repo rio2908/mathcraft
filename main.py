@@ -26,16 +26,18 @@ from game_storage import get_last_player, load_data, save_data, set_last_player
 from game_music import synthesize_biome_tune
 from game_tasks import (
     advance_heat_rune,
+    advance_clean_biome_streak,
     advance_mob_regeneration,
     create_adaptive_tasks,
+    create_chest_task,
     create_marathon_route,
     create_sage_task,
-    create_treasure_tasks,
     get_route_world,
     get_world_location,
     is_final_boss_position,
     make_math_task as generate_math_task,
     make_review_task,
+    pick_chest_key_task,
     pick_logic_task_with_history,
 )
 
@@ -74,7 +76,7 @@ biome_music_sounds = {}
 music_channel = None
 music_world_idx = None
 
-MUSIC_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE"}
+MUSIC_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE", "CHEST_LOCK"}
 
 def ensure_audio():
     """Initialize audio after a user gesture (required by browsers and Android)."""
@@ -208,7 +210,11 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             "game_history": [], "boss_penalty_errors": 0, "helmet_protections": 0,
             "helmet_durability": {"none": 0},
             "marathon_route": new_route,
-            "treasure_tasks": create_treasure_tasks(),
+            "clean_biome_streak": 0, "biome_had_error": False,
+            "last_biome_clean": False, "chest_task": None,
+            "chest_pending_next_marathon": False, "chest_challenge": None,
+            "chest_seen_questions": {"easy": [], "hard": []},
+            "hero_hearts": 3, "food_apples": 0, "food_bread": 0,
             "sage_task": create_sage_task(new_route),
             "sage_completed": False,
             "sage_artifact": None,
@@ -287,8 +293,25 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             }
             if world.get("location_id") not in valid_location_ids:
                 world["location_id"] = LOCATION_GROUPS[world_idx][0]["id"]
-        if len(p.get("treasure_tasks", [])) != len(WORLDS):
-            p["treasure_tasks"] = create_treasure_tasks()
+        p.setdefault("clean_biome_streak", 0)
+        if "biome_had_error" not in p:
+            current_world_number = min(len(WORLDS), (max(1, p.get("task_num", 1)) - 1) // STEPS_PER_WORLD + 1)
+            p["biome_had_error"] = any(
+                error.get("world") == current_world_number
+                for error in p.get("marathon_error_details", [])
+            )
+        p.setdefault("last_biome_clean", False)
+        p.setdefault("chest_task", None)
+        p.setdefault("chest_pending_next_marathon", False)
+        p.setdefault("chest_challenge", None)
+        if not isinstance(p.get("chest_seen_questions"), dict):
+            p["chest_seen_questions"] = {}
+        for mode in ("easy", "hard"):
+            if not isinstance(p["chest_seen_questions"].get(mode), list):
+                p["chest_seen_questions"][mode] = []
+        p.setdefault("hero_hearts", 3)
+        p.setdefault("food_apples", 0)
+        p.setdefault("food_bread", 0)
         if "sage_task" not in p:
             p["sage_task"] = create_sage_task(p["marathon_route"], p.get("task_num", 1))
         if "sage_completed" not in p: p["sage_completed"] = False
@@ -479,6 +502,25 @@ def draw_emerald(surf, cx, cy, r=9):
     pygame.draw.polygon(surf, MC_EMERALD_DARK, pts, 2)
     pygame.draw.circle(surf, (160, 255, 190), (cx - 2, cy - 2), 2)
 
+def draw_chest(surf, cx, cy, opened=False, scale=1):
+    """Draw a pixel chest without external assets."""
+    width, height = 42 * scale, 29 * scale
+    body = pygame.Rect(cx - width // 2, cy - height // 2, width, height)
+    pygame.draw.rect(surf, (63, 35, 16), body)
+    pygame.draw.rect(surf, (155, 91, 36), body.inflate(-4 * scale, -4 * scale))
+    lid_y = body.y - (13 * scale if opened else 0)
+    pygame.draw.rect(surf, (85, 49, 20), (body.x, lid_y, width, 10 * scale))
+    pygame.draw.rect(surf, (204, 135, 51), (body.x + 3 * scale, lid_y + 2 * scale, width - 6 * scale, 5 * scale))
+    pygame.draw.rect(surf, (245, 201, 68), (cx - 4 * scale, cy - 3 * scale, 8 * scale, 10 * scale))
+    pygame.draw.rect(surf, MC_GUI_BLACK, body, max(1, scale))
+
+def draw_key_icon(surf, x, y, active=True):
+    color = (248, 205, 65) if active else (110, 105, 90)
+    pygame.draw.circle(surf, color, (x, y), 10, 4)
+    pygame.draw.rect(surf, color, (x + 9, y - 3, 36, 7))
+    pygame.draw.rect(surf, color, (x + 30, y + 3, 7, 10))
+    pygame.draw.rect(surf, color, (x + 40, y + 3, 7, 10))
+
 def draw_mc_heart(surf, cx, cy, filled=True):
     if filled:
         pygame.draw.rect(surf, (220, 20, 20), (cx - 9, cy - 7, 8, 8))
@@ -626,6 +668,13 @@ def draw_item_icon(surf, item_type, cx, cy):
         pygame.draw.rect(surf, (200, 200, 220), (cx - 4, cy - 12, 8, 8))
         pygame.draw.rect(surf, (160, 110, 60), (cx - 5, cy - 15, 10, 3))
         pygame.draw.circle(surf, WHITE, (cx - 2, cy), 2)
+    elif item_type == "apple":
+        pygame.draw.rect(surf, (205, 55, 45), (cx - 12, cy - 7, 24, 22), border_radius=5)
+        pygame.draw.rect(surf, (90, 60, 30), (cx - 2, cy - 15, 4, 9))
+        pygame.draw.rect(surf, (65, 160, 55), (cx + 2, cy - 16, 9, 5))
+    elif item_type == "bread":
+        pygame.draw.rect(surf, (175, 105, 45), (cx - 16, cy - 7, 32, 21), border_radius=4)
+        pygame.draw.rect(surf, (225, 175, 90), (cx - 13, cy - 10, 26, 11), border_radius=4)
 
 content_box = pygame.Rect(140, 100, 740, 475)
 
@@ -1330,7 +1379,7 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         pygame.draw.rect(surf, (30, 30, 30), (sx - 13, sy - 16, 26, 18), 1)
 
 # ==================== ПЕРЕМЕННЫЕ И СОСТОЯНИЕ ====================
-TIMED_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE"}
+TIMED_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE", "CHEST_LOCK"}
 base_y = 490
 island_spacing = (WIDTH - 190) // (STEPS_PER_WORLD - 1)
 platforms = [(95, base_y)] + [
@@ -1610,6 +1659,108 @@ def set_next_boss_task():
         boss_task_str, boss_ans, boss_choices, boss_op, boss_clean_expr = make_math_task(["+", "-", "*", "/"])
         boss_is_review = False
 
+
+def finish_biome(profile, world_idx):
+    """Commit a clean-biome result and schedule one chest after three in a row."""
+    clean = not profile.get("biome_had_error", False)
+    profile["last_biome_clean"] = clean
+    streak, earned_chest = advance_clean_biome_streak(
+        profile.get("clean_biome_streak", 0), not clean
+    )
+    profile["clean_biome_streak"] = streak
+    profile["biome_had_error"] = False
+    if clean and world_idx < len(WORLDS) - 1:
+        profile["emeralds"] += 5
+    if earned_chest:
+        if world_idx < len(WORLDS) - 1:
+            profile["chest_task"] = create_chest_task(
+                profile["marathon_route"], world_idx + 1, profile.get("sage_task")
+            )
+        else:
+            profile["chest_pending_next_marathon"] = True
+    return clean
+
+
+def consume_food(profile, kind):
+    """Spend one food item only when a heart can be restored."""
+    field, restored = ("food_apples", 1) if kind == "apple" else ("food_bread", 2)
+    if profile.get("hero_hearts", 3) >= 3 or profile.get(field, 0) <= 0:
+        return False
+    profile[field] -= 1
+    profile["hero_hearts"] = min(3, profile["hero_hearts"] + restored)
+    return True
+
+
+def take_battle_hit(profile):
+    """Lose a heart; a totem saves only the last heart."""
+    profile["biome_had_error"] = True
+    hearts = max(0, profile.get("hero_hearts", 3))
+    if hearts <= 1 and profile.get("totems", 0) > 0:
+        profile["totems"] -= 1
+        profile["hero_hearts"] = 1
+        return "totem"
+    profile["hero_hearts"] = max(0, hearts - 1)
+    return "down" if profile["hero_hearts"] == 0 else "hurt"
+
+
+def chest_progress_hint(profile):
+    if profile.get("chest_task"):
+        return "Сундук в этом биоме!"
+    streak = 0 if profile.get("biome_had_error") else profile.get("clean_biome_streak", 0)
+    remaining = 3 - streak
+    form = "чистый биом" if remaining == 1 else "чистых биома"
+    return f"До сундука: {remaining} {form}"
+
+
+def start_chest_encounter():
+    global game_state, player_data
+    game_state = "CHEST_LOCK"
+    if player_data.get("chest_challenge"):
+        return
+    all_data = load_data()
+    p = all_data[player_name.strip()]
+    difficulty = p.get("difficulty", "easy")
+    question, answer, key_choices, history = pick_chest_key_task(
+        difficulty, p["chest_seen_questions"][difficulty]
+    )
+    p["chest_seen_questions"][difficulty] = history
+    rewards = ["emeralds", "emeralds"]
+    if p.get("food_apples", 0) < POTIONS["apple"]["max"]:
+        rewards.append("apple")
+    if p.get("food_bread", 0) < POTIONS["bread"]["max"]:
+        rewards.append("bread")
+    p["chest_challenge"] = {
+        "question": question, "answer": answer, "choices": key_choices,
+        "tries": 0, "finished": False, "won": False,
+        "reward": random.choice(rewards),
+    }
+    save_data(all_data)
+    player_data = p
+
+
+def answer_chest_key(profile, choice_index):
+    """Resolve one key choice exactly once; return True, False, or None if ignored."""
+    lock = profile["chest_challenge"]
+    if lock["finished"] or choice_index in lock.get("wrong_choices", []):
+        return None
+    correct = lock["choices"][choice_index] == lock["answer"]
+    if correct:
+        lock["won"] = True
+        lock["finished"] = True
+        if lock["reward"] == "emeralds":
+            profile["emeralds"] += 10
+        elif lock["reward"] == "apple":
+            profile["food_apples"] += 1
+        else:
+            profile["food_bread"] += 1
+    else:
+        lock["tries"] += 1
+        lock.setdefault("wrong_choices", []).append(choice_index)
+        lock["finished"] = lock["tries"] >= 2
+    if lock["finished"]:
+        profile["chest_task"] = None
+    return correct
+
 def start_sage_encounter():
     global game_state, sage_question, sage_answer, sage_choices, sage_msg, sage_finished, sage_won, sage_reward_name, player_data
     game_state = "SAGE_CHALLENGE"
@@ -1653,6 +1804,7 @@ def reset_entire_marathon():
     all_data = load_data()
     if player_name.strip() in all_data:
         p = all_data[player_name.strip()]
+        completed_marathon = p.get("task_num", 1) > TOTAL_QUESTS
         next_adaptive_tasks = create_adaptive_tasks(p)
         p["task_num"] = 1
         p["marathon_errors"] = 0
@@ -1660,7 +1812,6 @@ def reset_entire_marathon():
         p["boss_penalty_errors"] = 0
         p["helmet_protections"] = 0
         p["marathon_route"] = create_marathon_route(player_name, p.get("difficulty"))
-        p["treasure_tasks"] = create_treasure_tasks()
         p["sage_task"] = create_sage_task(p["marathon_route"])
         p["sage_completed"] = False
         p["sage_artifact"] = None
@@ -1676,6 +1827,16 @@ def reset_entire_marathon():
         p["heat_rune_regen_elapsed"] = 0.0
         p["sharp_sword_task"] = None
         p["boss_artifact_choice"] = None
+        p["hero_hearts"] = 3
+        p["biome_had_error"] = False
+        p["last_biome_clean"] = False
+        p["chest_challenge"] = None
+        p["chest_task"] = None
+        if completed_marathon and p.get("chest_pending_next_marathon"):
+            p["chest_task"] = create_chest_task(p["marathon_route"], 0, p["sage_task"])
+        if not completed_marathon:
+            p["clean_biome_streak"] = 0
+        p["chest_pending_next_marathon"] = False
         save_data(all_data)
         player_data = p
 
@@ -1698,6 +1859,10 @@ boss_answer_buttons = [pygame.Rect(start_btn_x + i * (btn_w + 20), 345, btn_w, b
 boss_book_btn = pygame.Rect(WIDTH // 2 - 135, 500, 270, 42)
 sage_answer_buttons = [pygame.Rect(130 + i * 250, 370, 230, 58) for i in range(3)]
 sage_continue_btn = pygame.Rect(WIDTH // 2 - 145, 470, 290, 48)
+chest_answer_buttons = [pygame.Rect(180 + i * 220, 345, 190, 58) for i in range(3)]
+chest_continue_btn = pygame.Rect(WIDTH // 2 - 145, 465, 290, 50)
+food_apple_btn = pygame.Rect(15, 535, 165, 40)
+food_bread_btn = pygame.Rect(185, 535, 165, 40)
 
 nav_workbench = pygame.Rect(480, 10, 100, 34)
 nav_players = pygame.Rect(585, 10, 75, 34)
@@ -1771,6 +1936,17 @@ def enter_player(name):
     login_show_all_players = False
     request_browser_fullscreen()
     player_data = get_player(name)
+    if player_data.get("hero_hearts", 3) <= 0:
+        all_data = load_data()
+        p = all_data[name.strip()]
+        failed_world_idx, _ = get_task_position(p.get("task_num", 1))
+        p["task_num"] = failed_world_idx * STEPS_PER_WORLD + 1
+        p["hero_hearts"] = 3
+        p["strength_mob_task"] = None
+        p["frog_mob_task"] = None
+        p["sharp_sword_task"] = None
+        save_data(all_data)
+        player_data = p
     sound_enabled = player_data.get("sound_enabled", True)
     marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0))
     timer_save_accumulator = 0.0
@@ -1786,6 +1962,10 @@ def enter_player(name):
     game_state = "GAME"
     if is_final_boss_position(task_num, current_world_idx, step_in_world):
         start_boss_battle()
+    elif (
+        player_data.get("chest_challenge") is not None
+    ):
+        start_chest_encounter()
     elif (
         not player_data.get("sage_completed", False)
         and player_data.get("sage_task") is not None
@@ -1877,6 +2057,20 @@ async def main():
             if event.type == pygame.MOUSEBUTTONDOWN and hasattr(event, "pos"):
                 mouse_pos = event.pos
                 ensure_audio()
+
+            if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                    and game_state in ("GAME", "MOB_BATTLE", "BOSS_BATTLE")
+                    and not (game_state == "MOB_BATTLE" and (mob_hp == 0 or mob_failed_reset))
+                    and not (game_state == "BOSS_BATTLE" and boss_won)
+                    and (food_apple_btn.collidepoint(mouse_pos) or food_bread_btn.collidepoint(mouse_pos))):
+                kind = "apple" if food_apple_btn.collidepoint(mouse_pos) else "bread"
+                all_data = load_data()
+                p = all_data[player_name.strip()]
+                if consume_food(p, kind):
+                    save_data(all_data)
+                    player_data = p
+                    play_sound("purchase")
+                continue
 
             if event.type == pygame.QUIT:
                 persist_marathon_timer()
@@ -2063,9 +2257,6 @@ async def main():
                                     play_sound("correct")
                                     combo_count += 1
                                     gain = 2 if combo_count >= 5 else 1
-                                    is_treasure_task = task_num in p.get("treasure_tasks", [])
-                                    if is_treasure_task:
-                                        gain += 2
                                     if p.get("luck_timer", 0) > 0:
                                         gain *= 2
                                         p["luck_timer"] -= 1
@@ -2073,10 +2264,7 @@ async def main():
                                     p["emeralds"] += gain
                                     floating_texts.append([f"+{gain} ИЗУМРУД!", hero_x, hero_y - 25, MC_EMERALD, 45])
                                     
-                                    if is_treasure_task:
-                                        message = f"СОКРОВИЩЕ НАЙДЕНО! (+{gain} изумр.)"
-                                        message_color = MC_GOLD
-                                    elif combo_count >= 5:
+                                    if combo_count >= 5:
                                         message = f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+{gain} изумр.)"
                                         message_color = MC_GOLD
                                     else:
@@ -2084,7 +2272,12 @@ async def main():
                                         message_color = GREEN
 
                                     completed_task = task_num
-                                    if completed_task % STEPS_PER_WORLD == 0:
+                                    if completed_task == p.get("chest_task"):
+                                        save_data(all_data)
+                                        player_data = p
+                                        start_chest_encounter()
+                                    elif completed_task % STEPS_PER_WORLD == 0:
+                                        finish_biome(p, current_world_idx)
                                         task_num += 1
                                         p["task_num"] = task_num
                                         save_data(all_data)
@@ -2108,6 +2301,7 @@ async def main():
                                 else:
                                     wrong_val = choices[i]
                                     p["marathon_errors"] = p.get("marathon_errors", 0) + 1
+                                    p["biome_had_error"] = True
                                     helmet_save = use_helmet_protection(p)
                                     if helmet_save:
                                         play_sound("hit")
@@ -2197,6 +2391,39 @@ async def main():
                                     play_sound("wrong")
                                 break
 
+            elif game_state == "CHEST_LOCK":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    challenge = player_data["chest_challenge"]
+                    if challenge["finished"]:
+                        if chest_continue_btn.collidepoint(mouse_pos):
+                            all_data = load_data()
+                            p = all_data[player_name.strip()]
+                            p["chest_challenge"] = None
+                            task_num += 1
+                            p["task_num"] = task_num
+                            save_data(all_data)
+                            player_data = p
+                            step_in_world += 1
+                            target_x = platforms[step_in_world][0]
+                            target_y = platforms[step_in_world][1] - 24
+                            is_moving = True
+                            move_progress = 0.0
+                            question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
+                            game_state = "GAME"
+                    else:
+                        for i, rect in enumerate(chest_answer_buttons):
+                            if rect.collidepoint(mouse_pos) and i not in challenge.get("wrong_choices", []):
+                                all_data = load_data()
+                                p = all_data[player_name.strip()]
+                                correct = answer_chest_key(p, i)
+                                if correct:
+                                    play_sound("victory")
+                                else:
+                                    play_sound("wrong")
+                                save_data(all_data)
+                                player_data = p
+                                break
+
             elif game_state == "BOSS_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if boss_won:
@@ -2229,6 +2456,7 @@ async def main():
                                     if boss_streak >= boss_max_hp:
                                         play_sound("victory")
                                         boss_won = True
+                                        finish_biome(p, current_world_idx)
                                         history = p.setdefault("game_history", [])
                                         current_duration = max(1, int(round(marathon_elapsed_seconds)))
                                         previous_duration = history[-1].get("duration_seconds") if history else None
@@ -2264,20 +2492,24 @@ async def main():
                                         set_next_boss_task()
                                 else:
                                     play_sound("wrong")
+                                    hit_result = take_battle_hit(p)
                                     pet_error = register_pet_error(p)
+                                    if hit_result == "down":
+                                        p["hero_hearts"] = 3
                                     save_data(all_data)
                                     player_data = p
                                     pet_suffix = f" {pet_error['pet_name']} убежал!" if pet_error and pet_error["ran_away"] else ""
-                                    if p.get("totems", 0) > 0:
-                                        p["totems"] -= 1
-                                        save_data(all_data)
-                                        player_data = p
+                                    if hit_result == "totem":
                                         spawn_hit_sparks(280, 185, is_shield=True)
-                                        boss_msg = f"Тотем спас от ошибки! Осталось тотемов: {p['totems']}.{pet_suffix}"
+                                        boss_msg = f"Тотем спас последнее сердце! Осталось: {p['totems']}.{pet_suffix}"
                                         set_next_boss_task()
                                     else:
                                         boss_streak = 0
-                                        boss_msg = f"ОШИБКА (было {boss_ans})! Серия сброшена.{pet_suffix}"
+                                        boss_msg = (
+                                            f"Сердца кончились! Бой начат заново.{pet_suffix}"
+                                            if hit_result == "down" else
+                                            f"Ошибка! Сердец: {p['hero_hearts']}/3. Серия сброшена.{pet_suffix}"
+                                        )
                                         spawn_dust(280, 190, color=(220, 50, 50))
                                         set_next_boss_task()
 
@@ -2341,6 +2573,7 @@ async def main():
                                 all_data = load_data()
                                 p = all_data[player_name.strip()]
                                 p["task_num"] = task_num
+                                p["hero_hearts"] = 3
                                 p["strength_mob_task"] = None
                                 p["frog_mob_task"] = None
                                 p["heat_rune_task"] = None
@@ -2485,35 +2718,32 @@ async def main():
                                         mob_hint_hidden = -1
                                 else:
                                     play_sound("wrong")
+                                    hit_result = take_battle_hit(p)
                                     pet_error = register_pet_error(p)
                                     save_data(all_data)
                                     player_data = p
                                     pet_suffix = f" {pet_error['pet_name']} убежал!" if pet_error and pet_error["ran_away"] else ""
-                                    if p.get("totems", 0) > 0:
-                                        p["totems"] -= 1
-                                        save_data(all_data)
-                                        player_data = p
+                                    if hit_result == "totem":
                                         spawn_hit_sparks(280, 185, is_shield=True)
-                                        mob_battle_result_msg = f"Тотем спас от сброса! Осталось: {p['totems']}.{pet_suffix}"
+                                        mob_battle_result_msg = f"Тотем спас последнее сердце! Осталось: {p['totems']}.{pet_suffix}"
                                         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
                                             p, current_world_idx
                                         )
                                         mob_hint_hidden = -1
-                                    else:
+                                    elif hit_result == "down":
                                         mob_failed_reset = True
-                                        mob_battle_result_msg = f"ОШИБКА! Правильно: {mob_ans}. Уровень сброшен!{pet_suffix}"
+                                        mob_battle_result_msg = f"Сердца кончились! Биом начат заново.{pet_suffix}"
                                         spawn_dust(280, 190, color=(220, 50, 50))
+                                    else:
+                                        mob_battle_result_msg = f"Ошибка! Осталось сердец: {p['hero_hearts']}/3.{pet_suffix}"
+                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
+                                            p, current_world_idx
+                                        )
+                                        mob_hint_hidden = -1
 
             elif game_state == "REVIEW":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if review_btn_continue.collidepoint(mouse_pos):
-                        if len(ten_errors) == 0:
-                            all_data = load_data()
-                            p = all_data[player_name.strip()]
-                            p["emeralds"] += 5
-                            save_data(all_data)
-                            player_data = p
-
                         ten_errors = []
                         if task_num > TOTAL_QUESTS:
                             start_boss_battle()
@@ -2665,6 +2895,14 @@ async def main():
                                     if p.get("strength_potions", 0) < pot_info["max"] and p["emeralds"] >= pot_info["cost"]:
                                         p["emeralds"] -= pot_info["cost"]
                                         p["strength_potions"] = p.get("strength_potions", 0) + 1
+                                        play_sound("purchase")
+                                        save_data(all_data)
+                                        player_data = p
+                                elif pot_id in ("apple", "bread"):
+                                    field = "food_apples" if pot_id == "apple" else "food_bread"
+                                    if p.get(field, 0) < pot_info["max"] and p["emeralds"] >= pot_info["cost"]:
+                                        p["emeralds"] -= pot_info["cost"]
+                                        p[field] = p.get(field, 0) + 1
                                         play_sound("purchase")
                                         save_data(all_data)
                                         player_data = p
@@ -2991,6 +3229,9 @@ async def main():
                     and step_in_world < sage_step
                 ):
                     draw_librarian(screen, px, py - 42, anim_tick=anim_tick)
+                chest_task = player_data.get("chest_task")
+                if chest_task == current_world_idx * STEPS_PER_WORLD + i:
+                    draw_chest(screen, px, py - 32)
                 if current_world_idx == 4 and i == 10 and task_num <= TOTAL_QUESTS:
                     draw_dragon_marker(screen, px, py - 30, anim_tick)
 
@@ -3068,21 +3309,18 @@ async def main():
             title_world = FONT_BIG.render(f"{cur_w['name']}  ({v_title})", True, DARK_TEXT if cur_w["dark_text"] else WHITE)
             screen.blit(title_world, (WIDTH//2 - title_world.get_width()//2, 72))
 
-            is_treasure_task = task_num in player_data.get("treasure_tasks", [])
             if current_op == "adaptive" and task_num <= TOTAL_QUESTS:
-                adaptive_label = "ПОВТОР ПРОШЛОЙ ОШИБКИ"
-                if is_treasure_task:
-                    adaptive_label += " · СОКРОВИЩЕ +2"
-                draw_readable_badge(screen, WIDTH // 2, 118, adaptive_label, border_col=(115, 65, 155), text_col=(235, 205, 255), font=FONT_SMALL)
-            elif is_treasure_task and task_num <= TOTAL_QUESTS:
-                draw_readable_badge(screen, WIDTH // 2, 118, "ЗАДАНИЕ-СОКРОВИЩЕ: +2 ИЗУМРУДА", border_col=(160, 125, 20), text_col=MC_GOLD, font=FONT_SMALL)
+                draw_readable_badge(screen, WIDTH // 2, 118, "ПОВТОР ПРОШЛОЙ ОШИБКИ", border_col=(115, 65, 155), text_col=(235, 205, 255), font=FONT_SMALL)
             elif combo_count >= 5:
                 draw_readable_badge(screen, WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
 
+            chest_hint = chest_progress_hint(player_data)
+            draw_readable_badge(screen, 820, 120, chest_hint, border_col=(115, 75, 35), text_col=WHITE, font=FONT_TINY)
+
             if task_num <= TOTAL_QUESTS:
                 q_box = pygame.Rect(WIDTH//2 - 130, 152, 260, 58)
-                pygame.draw.rect(screen, (185, 145, 45) if is_treasure_task else (160, 115, 65), q_box)
-                pygame.draw.rect(screen, (255, 220, 70) if is_treasure_task else (100, 65, 30), q_box, 3)
+                pygame.draw.rect(screen, (160, 115, 65), q_box)
+                pygame.draw.rect(screen, (100, 65, 30), q_box, 3)
                 q_txt = FONT_TITLE.render(question_str, True, WHITE)
                 screen.blit(q_txt, (q_box.centerx - q_txt.get_width()//2, q_box.centery - q_txt.get_height()//2))
 
@@ -3370,6 +3608,32 @@ async def main():
                     custom_bg=(65, 145, 75) if sage_won else (105, 105, 120)
                 )
 
+        elif game_state == "CHEST_LOCK":
+            screen.fill((58, 89, 73))
+            chest_card = pygame.Rect(145, 35, 710, 525)
+            pygame.draw.rect(screen, MC_GUI_BG, chest_card)
+            pygame.draw.rect(screen, MC_GOLD, chest_card, 4)
+            title = FONT_TITLE.render("СУНДУК С ТРЕМЯ КЛЮЧАМИ", True, DARK_TEXT)
+            screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 60))
+            lock = player_data["chest_challenge"]
+            draw_chest(screen, WIDTH // 2, 170, opened=lock["finished"] and lock["won"], scale=3)
+            if not lock["finished"]:
+                draw_centered_wrapped_text(screen, lock["question"], FONT_BIG, DARK_TEXT, WIDTH // 2, 245, 650)
+                for i, rect in enumerate(chest_answer_buttons):
+                    enabled = i not in lock.get("wrong_choices", [])
+                    draw_mc_button(screen, rect, str(lock["choices"][i]), rect.collidepoint(mouse_pos) and enabled,
+                                   enabled, font_pref=FONT_BIG, custom_bg=(125, 88, 44))
+                    draw_key_icon(screen, rect.x + 25, rect.centery - 2, enabled)
+                remaining = 2 - lock["tries"]
+                draw_readable_badge(screen, WIDTH // 2, 435, f"Осталось попыток: {remaining}", font=FONT_MED)
+            else:
+                reward_labels = {"emeralds": "+10 изумрудов", "apple": "яблоко (+1 сердце)", "bread": "хлеб (+2 сердца)"}
+                result = f"Сундук открыт! Награда: {reward_labels[lock['reward']]}" if lock["won"] else "Замок закрылся. В этот раз без награды."
+                draw_centered_wrapped_text(screen, result, FONT_BIG, GREEN if lock["won"] else RED,
+                                           WIDTH // 2, 315, 650)
+                draw_mc_button(screen, chest_continue_btn, "Продолжить путь", chest_continue_btn.collidepoint(mouse_pos),
+                               font_pref=FONT_MED, custom_bg=(70, 135, 75))
+
         elif game_state == "BOSS_BATTLE":
             screen.fill((15, 10, 25))
             arena_card = pygame.Rect(120, 20, 760, 560)
@@ -3656,9 +3920,9 @@ async def main():
             t_head = FONT_TITLE.render(f"Итоги биома: {w_title}", True, DARK_TEXT)
             screen.blit(t_head, (WIDTH // 2 - t_head.get_width() // 2, 45))
 
-            if len(ten_errors) > 0:
+            if not player_data.get("last_biome_clean", False):
                 total_errors = player_data.get("marathon_errors", 0)
-                sub = FONT_MED.render(f"Ошибки биома: {len(ten_errors)}. Всего в марафоне: {total_errors}.", True, (160, 30, 30))
+                sub = FONT_MED.render(f"Биом был с ошибками. Всего ошибок на маршруте: {total_errors}.", True, (160, 30, 30))
                 screen.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 85))
 
                 for idx, err in enumerate(ten_errors[:6]):
@@ -3676,6 +3940,9 @@ async def main():
                     c_tag = FONT_BIG.render(f"Верно: {err['correct']}", True, GREEN)
                     screen.blit(c_tag, (r_box.right - c_tag.get_width() - 20, r_box.centery - c_tag.get_height() // 2))
 
+                progress_text = FONT_MED.render(chest_progress_hint(player_data), True, (110, 65, 20))
+                screen.blit(progress_text, (WIDTH // 2 - progress_text.get_width() // 2, 455))
+
                 btn_txt = "Все понятно, в следующий биом!"
             else:
                 draw_emerald(screen, WIDTH // 2, 165, r=26)
@@ -3686,6 +3953,10 @@ async def main():
                 screen.blit(c1, (WIDTH // 2 - c1.get_width() // 2, 220))
                 screen.blit(c2, (WIDTH // 2 - c2.get_width() // 2, 270))
                 screen.blit(c3, (WIDTH // 2 - c3.get_width() // 2, 320))
+
+                chest_status = "Сундук ждёт в следующем биоме!" if player_data.get("chest_task") else chest_progress_hint(player_data)
+                progress_text = FONT_MED.render(chest_status, True, (110, 65, 20))
+                screen.blit(progress_text, (WIDTH // 2 - progress_text.get_width() // 2, 375))
 
                 btn_txt = "В следующий биом!"
 
@@ -3706,7 +3977,7 @@ async def main():
                            custom_bg=(170, 170, 175) if workbench_tab == "VEHICLES" else (90, 90, 95))
             draw_mc_button(screen, tab_artifacts_rect, "Оружие", tab_artifacts_rect.collidepoint(mouse_pos), 
                            custom_bg=(170, 170, 175) if workbench_tab == "ARTIFACTS" else (90, 90, 95))
-            draw_mc_button(screen, tab_potions_rect, "Зелья и Тотемы", tab_potions_rect.collidepoint(mouse_pos), 
+            draw_mc_button(screen, tab_potions_rect, "Зелья и еда", tab_potions_rect.collidepoint(mouse_pos),
                            custom_bg=(170, 170, 175) if workbench_tab == "POTIONS" else (90, 90, 95))
             draw_mc_button(screen, tab_pets_rect, "Питомцы", tab_pets_rect.collidepoint(mouse_pos),
                            custom_bg=(170, 170, 175) if workbench_tab == "PETS" else (90, 90, 95))
@@ -3870,6 +4141,10 @@ async def main():
                         cnt = player_data.get("totems", 0)
                     elif pot_id == "luck":
                         cnt = player_data.get("luck_potions", 0)
+                    elif pot_id == "apple":
+                        cnt = player_data.get("food_apples", 0)
+                    elif pot_id == "bread":
+                        cnt = player_data.get("food_bread", 0)
                     else:
                         cnt = player_data.get("strength_potions", 0)
                     screen.blit(FONT_BIG.render(f"{pot_info['name']} (В наличии: {cnt} из {pot_info['max']})", True, PURPLE), (slot_rect.right + 15, row_rect.y + 6))
@@ -3909,6 +4184,22 @@ async def main():
                     else:
                         can_buy = player_data["emeralds"] >= pet_info["cost"]
                         draw_mc_button(screen, b_pet, "Купить", b_pet.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL)
+
+        if game_state in ("GAME", "MOB_BATTLE", "BOSS_BATTLE"):
+            hero_hearts = player_data.get("hero_hearts", 3)
+            for heart_index in range(3):
+                draw_mc_heart(screen, 790 + heart_index * 31, 80, filled=heart_index < hero_hearts)
+            can_eat = hero_hearts < 3 and not (game_state == "BOSS_BATTLE" and boss_won)
+            if game_state == "MOB_BATTLE" and (mob_hp == 0 or mob_failed_reset):
+                can_eat = False
+            apples = player_data.get("food_apples", 0)
+            bread = player_data.get("food_bread", 0)
+            draw_mc_button(screen, food_apple_btn, f"Яблоко +1 ({apples})",
+                           food_apple_btn.collidepoint(mouse_pos) and can_eat and apples > 0,
+                           can_eat and apples > 0, font_pref=FONT_SMALL, custom_bg=(155, 62, 50))
+            draw_mc_button(screen, food_bread_btn, f"Хлеб +2 ({bread})",
+                           food_bread_btn.collidepoint(mouse_pos) and can_eat and bread > 0,
+                           can_eat and bread > 0, font_pref=FONT_SMALL, custom_bg=(156, 112, 55))
 
         pygame.display.flip()
         await asyncio.sleep(0)

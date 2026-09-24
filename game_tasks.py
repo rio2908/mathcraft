@@ -21,6 +21,7 @@ def advance_heat_rune(remaining, delta):
     return max(0.0, remaining - protected), delta - protected
 
 from game_content import (
+    CHEST_KEY_TASKS,
     LOCATION_GROUPS,
     LOGIC_TASKS,
     MOB_POOLS,
@@ -54,8 +55,37 @@ def create_marathon_route(profile_name, difficulty=None):
     return route
 
 
-def create_treasure_tasks():
-    return [world_idx * STEPS_PER_WORLD + random.randint(1, STEPS_PER_WORLD) for world_idx in range(len(WORLDS))]
+def create_chest_task(route, world_idx, sage_task=None):
+    """Choose a free island in a biome, away from the mob and librarian."""
+    occupied = {world_idx * STEPS_PER_WORLD + route[world_idx]["mob_step"], sage_task}
+    available = [world_idx * STEPS_PER_WORLD + step for step in range(2, STEPS_PER_WORLD)
+                 if world_idx * STEPS_PER_WORLD + step not in occupied]
+    return random.choice(available)
+
+
+def advance_clean_biome_streak(streak, had_error):
+    """Return the next streak and whether the third clean biome earned a chest."""
+    if had_error:
+        return 0, False
+    streak += 1
+    return (0, True) if streak >= 3 else (streak, False)
+
+
+def pick_chest_key_task(difficulty, seen_questions):
+    """Choose an unseen lock puzzle and start a new cycle when exhausted."""
+    tasks = CHEST_KEY_TASKS[difficulty]
+    questions = {question for question, _, _ in tasks}
+    history = [question for question in seen_questions if question in questions]
+    previous = history[-1] if history else None
+    if len(set(history)) == len(tasks):
+        history = []
+    available = [task for task in tasks if task[0] not in history]
+    if not history and previous and len(available) > 1:
+        available = [task for task in available if task[0] != previous]
+    question, options, answer = random.choice(available)
+    choices = list(options)
+    random.shuffle(choices)
+    return question, answer, choices, history + [question]
 
 
 def is_final_boss_position(task_number, world_index, step_in_world):
