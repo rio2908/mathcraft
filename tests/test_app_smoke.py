@@ -58,6 +58,12 @@ class AppSmokeTests(unittest.TestCase):
             profile["disabled_artifacts"] = ["sharp_sword"]
             if main.has_active_artifact(profile, "sharp_sword"):
                 raise AssertionError("Disabled artifact must not affect combat")
+
+            sprite_surface = pygame.Surface((120, 120))
+            sprite_surface.fill((35, 45, 55))
+            main.draw_mob(sprite_surface, 60, 60, "creeper")
+            if sprite_surface.get_at((90, 60))[:3] != (35, 45, 55):
+                raise AssertionError("Mob drawing must not add a glowing backdrop")
             """
         )
         environment = os.environ.copy()

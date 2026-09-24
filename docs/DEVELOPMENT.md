@@ -155,14 +155,19 @@ $env:PYTHONUTF8 = "1"
 
 ## 8. Android APK
 
-Сборка запускается вручную через workflow `.github/workflows/android.yml`.
-Результат публикуется как artifact `MathCraft-Android-debug`.
+Отладочная сборка запускается вручную через workflow
+`.github/workflows/android.yml`. Результат публикуется как artifact
+`MathCraft-Android-debug`. Подписанный APK для RuStore собирается отдельным
+workflow `.github/workflows/android-rustore.yml` после настройки секретов;
+пошаговая инструкция находится в [`RUSTORE.md`](RUSTORE.md).
 
 Параметры:
 
 - package id: `org.game.mathcraft`;
 - минимальный Android API: 24;
 - target/compile API: 34;
+- код версии для первой публикации в RuStore: 10000; перед каждой следующей
+  публикацией его необходимо увеличивать;
 - архитектура: `arm64-v8a`;
 - bootstrap: SDL2;
 - ориентация: landscape;
@@ -175,15 +180,17 @@ Workflow сейчас собирает debug APK. На новом GitHub runner 
 подписью поверх существующего приложения (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
 Удаление старого приложения решает установку, но стирает локальную статистику.
 
-Для стабильных обновлений нужен постоянный release keystore:
+Для стабильных обновлений нужен постоянный release keystore. Workflow RuStore
+использует его через четыре GitHub Secrets:
 
 1. создать ключ один раз и хранить его вне репозитория;
-2. сохранить keystore в GitHub Secret в кодировке base64;
-3. сохранить alias и пароли в отдельных GitHub Secrets;
-4. в workflow восстановить файл и задать переменные
+2. сохранить keystore в `ANDROID_RELEASE_KEYSTORE_BASE64` в кодировке base64;
+3. сохранить alias и пароли в `ANDROID_RELEASE_KEY_ALIAS`,
+   `ANDROID_RELEASE_KEYSTORE_PASSWORD`, `ANDROID_RELEASE_KEY_PASSWORD`;
+4. workflow восстанавливает файл и задаёт переменные
    `P4A_RELEASE_KEYSTORE`, `P4A_RELEASE_KEYSTORE_PASSWD`,
    `P4A_RELEASE_KEYALIAS`, `P4A_RELEASE_KEYALIAS_PASSWD`;
-5. собирать `buildozer android release`;
+5. собирать `buildozer android release` и проверять подпись APK;
 6. никогда не терять и не заменять этот ключ для существующего package id.
 
 До настройки постоянной подписи не обещайте пользователю сохранение данных при

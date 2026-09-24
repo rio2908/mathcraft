@@ -937,10 +937,6 @@ def draw_world_background(surf, world_idx, world, tick, ground_y):
 def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
     bob = int(math.sin(anim_tick * 0.15) * 3)
     cy += bob
-    backdrop = pygame.Surface((76, 86), pygame.SRCALPHA)
-    pygame.draw.ellipse(backdrop, (15, 15, 20, 145), (4, 2, 68, 82))
-    pygame.draw.ellipse(backdrop, (245, 240, 215, 185), (4, 2, 68, 82), 2)
-    surf.blit(backdrop, (cx - 38, cy - 40))
     if mob_id == "frog":
         frog_color = (255, 110, 110) if flash_red else (65, 185, 80)
         pygame.draw.rect(surf, (25, 90, 40), (cx - 24, cy + 8, 48, 27))
@@ -957,7 +953,7 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, (25, 90, 40), (cx - 32, cy + 25, 23, 10))
         pygame.draw.rect(surf, (25, 90, 40), (cx + 9, cy + 25, 23, 10))
     elif mob_id == "creeper":
-        c_col = (255, 100, 100) if flash_red else (70, 175, 60)
+        c_col = (255, 100, 100) if flash_red else (190, 225, 90)
         pygame.draw.rect(surf, c_col, (cx - 16, cy - 28, 32, 32))
         eye_col = (40, 40, 40)
         pygame.draw.rect(surf, eye_col, (cx - 12, cy - 22, 8, 8))
@@ -966,10 +962,10 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, eye_col, (cx - 8, cy - 8, 4, 10))
         pygame.draw.rect(surf, eye_col, (cx + 4, cy - 8, 4, 10))
         pygame.draw.rect(surf, c_col, (cx - 10, cy + 4, 20, 26))
-        pygame.draw.rect(surf, (50, 140, 45), (cx - 16, cy + 30, 12, 12))
-        pygame.draw.rect(surf, (50, 140, 45), (cx + 4, cy + 30, 12, 12))
+        pygame.draw.rect(surf, (110, 150, 45), (cx - 16, cy + 30, 12, 12))
+        pygame.draw.rect(surf, (110, 150, 45), (cx + 4, cy + 30, 12, 12))
     elif mob_id == "skeleton":
-        s_col = (255, 100, 100) if flash_red else (210, 210, 215)
+        s_col = (255, 100, 100) if flash_red else (120, 130, 140)
         pygame.draw.rect(surf, s_col, (cx - 15, cy - 26, 30, 28))
         pygame.draw.rect(surf, (30, 30, 30), (cx - 11, cy - 18, 8, 8))
         pygame.draw.rect(surf, (30, 30, 30), (cx + 3, cy - 18, 8, 8))
@@ -979,7 +975,7 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, s_col, (cx + 3, cy + 28, 5, 16))
         pygame.draw.arc(surf, (130, 85, 45), (cx + 10, cy - 6, 16, 30), -math.pi/2, math.pi/2, 3)
     elif mob_id == "stray":
-        s_col = (255, 100, 100) if flash_red else (160, 185, 200)
+        s_col = (255, 100, 100) if flash_red else (70, 115, 150)
         pygame.draw.rect(surf, s_col, (cx - 15, cy - 26, 30, 28))
         pygame.draw.rect(surf, (60, 220, 240), (cx - 11, cy - 18, 8, 8))
         pygame.draw.rect(surf, (60, 220, 240), (cx + 3, cy - 18, 8, 8))
@@ -997,7 +993,7 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
             ry = cy + int(math.sin(angle) * 12) + 10
             pygame.draw.rect(surf, (255, 120, 20), (rx - 3, ry - 12, 6, 24))
     elif mob_id == "enderman":
-        e_col = (255, 100, 100) if flash_red else (20, 20, 25)
+        e_col = (255, 100, 100) if flash_red else (135, 110, 165)
         pygame.draw.rect(surf, e_col, (cx - 12, cy - 44, 24, 24))
         pygame.draw.rect(surf, (200, 60, 245), (cx - 10, cy - 34, 7, 4))
         pygame.draw.rect(surf, (200, 60, 245), (cx + 3, cy - 34, 7, 4))
@@ -1010,8 +1006,8 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, e_col, (cx + 1, cy + 14, 4, 34))
     elif mob_id in ("zombie", "husk", "piglin"):
         colors = {
-            "zombie": ((75, 155, 80), (55, 95, 145)),
-            "husk": ((175, 145, 85), (115, 85, 45)),
+            "zombie": ((175, 215, 110), (55, 95, 145)),
+            "husk": ((175, 145, 85), (65, 100, 135)),
             "piglin": ((235, 155, 145), (105, 55, 65)),
         }
         head_col, body_col = colors[mob_id]
@@ -1046,16 +1042,18 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, (45, 25, 45), (cx - 3, cy - 14, 6, 12))
         pygame.draw.rect(surf, w_col, (cx - 15, cy + 4, 30, 38))
     elif mob_id == "snow_golem":
-        snow_col = (255, 140, 140) if flash_red else (235, 245, 250)
+        snow_col = (255, 140, 140) if flash_red else (105, 155, 185)
         pygame.draw.circle(surf, snow_col, (cx, cy + 17), 22)
         pygame.draw.circle(surf, snow_col, (cx, cy - 15), 16)
+        pygame.draw.rect(surf, (225, 245, 250), (cx - 13, cy + 5, 7, 5))
+        pygame.draw.rect(surf, (225, 245, 250), (cx + 7, cy + 22, 9, 5))
         pygame.draw.rect(surf, (235, 110, 25), (cx, cy - 14, 18, 5))
         pygame.draw.rect(surf, (30, 30, 30), (cx - 9, cy - 21, 4, 4))
         pygame.draw.rect(surf, (30, 30, 30), (cx + 5, cy - 21, 4, 4))
         pygame.draw.line(surf, (120, 85, 50), (cx - 18, cy + 4), (cx - 32, cy - 5), 3)
         pygame.draw.line(surf, (120, 85, 50), (cx + 18, cy + 4), (cx + 32, cy - 5), 3)
     elif mob_id == "ice_golem":
-        ice = (255, 115, 115) if flash_red else (100, 205, 235)
+        ice = (255, 115, 115) if flash_red else (75, 155, 190)
         edge = (25, 75, 110)
         pygame.draw.rect(surf, edge, (cx - 19, cy - 27, 38, 31))
         pygame.draw.rect(surf, ice, (cx - 16, cy - 24, 32, 25))
@@ -1070,7 +1068,7 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.line(surf, (220, 250, 255), (cx - 9, cy + 10), (cx - 2, cy + 18), 3)
         pygame.draw.line(surf, (220, 250, 255), (cx - 2, cy + 18), (cx + 7, cy + 11), 3)
     elif mob_id == "magma_cube":
-        m_col = (255, 130, 130) if flash_red else (110, 25, 20)
+        m_col = (255, 130, 130) if flash_red else (240, 115, 35)
         stretch = abs(int(math.sin(anim_tick * 0.16) * 5))
         pygame.draw.rect(surf, m_col, (cx - 22, cy - 15 - stretch, 44, 38 + stretch), border_radius=3)
         pygame.draw.rect(surf, (240, 95, 20), (cx - 22, cy + 7, 44, 6))
@@ -1083,7 +1081,7 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.rect(surf, (45, 30, 55), (cx - 12, cy + 2, 24, 17))
         pygame.draw.rect(surf, (220, 210, 80), (cx - 6, cy + 7, 12, 5))
     elif mob_id == "endermite":
-        mite_col = (255, 110, 130) if flash_red else (90, 65, 115)
+        mite_col = (255, 110, 130) if flash_red else (190, 135, 220)
         for segment in range(4):
             sx = cx - 24 + segment * 14
             sy = cy + int(math.sin(anim_tick * 0.2 + segment) * 4)
@@ -1315,6 +1313,7 @@ marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0))
 timer_save_accumulator = 0.0
 combo_count = 0
 current_world_idx, step_in_world = get_task_position(task_num)
+workbench_preview_vehicle_idx = current_world_idx
 
 hero_x = float(platforms[step_in_world][0])
 hero_y = float(platforms[step_in_world][1] - 24)
@@ -1786,7 +1785,7 @@ async def main():
     global mob_hint_hidden, boss_hint_hidden
     global mob_regen_elapsed, mob_regen_started, mob_regen_flash_timer
     global mob_heat_seconds_left, mob_heat_save_accumulator
-    global boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
+    global boss_msg, boss_won, workbench_tab, workbench_preview_vehicle_idx, stats_page, sound_enabled
     global history_page, history_selected_index
     global sage_msg, sage_finished, sage_won, sage_reward_name
     global marathon_elapsed_seconds, timer_save_accumulator, boss_speed_bonus, boss_previous_time
@@ -1948,6 +1947,7 @@ async def main():
                         continue
                     if nav_workbench.collidepoint(mouse_pos):
                         persist_marathon_timer()
+                        workbench_preview_vehicle_idx = current_world_idx
                         game_state = "WORKBENCH"
                         continue
                     if nav_players.collidepoint(mouse_pos):
@@ -2470,7 +2470,9 @@ async def main():
                         continue
 
                     if tab_helmets_rect.collidepoint(mouse_pos): workbench_tab = "HELMETS"
-                    elif tab_vehicles_rect.collidepoint(mouse_pos): workbench_tab = "VEHICLES"
+                    elif tab_vehicles_rect.collidepoint(mouse_pos):
+                        workbench_tab = "VEHICLES"
+                        workbench_preview_vehicle_idx = current_world_idx
                     elif tab_artifacts_rect.collidepoint(mouse_pos): workbench_tab = "ARTIFACTS"
                     elif tab_potions_rect.collidepoint(mouse_pos): workbench_tab = "POTIONS"
                     elif tab_pets_rect.collidepoint(mouse_pos): workbench_tab = "PETS"
@@ -2514,6 +2516,7 @@ async def main():
                             toggle_btn = get_vehicle_toggle_rect(idx)
                             v_code = w_info["vehicle_type"]
                             if toggle_btn.collidepoint(mouse_pos) and v_code in p.get("owned_vehicles", []):
+                                workbench_preview_vehicle_idx = idx
                                 disabled = p.setdefault("disabled_vehicles", [])
                                 if v_code in disabled:
                                     disabled.remove(v_code)
@@ -2523,6 +2526,7 @@ async def main():
                                 player_data = p
                             elif b_upg.collidepoint(mouse_pos):
                                 if v_code not in p.get("owned_vehicles", []) and p["emeralds"] >= w_info["v_cost"]:
+                                    workbench_preview_vehicle_idx = idx
                                     p["emeralds"] -= w_info["v_cost"]
                                     p.setdefault("owned_vehicles", []).append(v_code)
                                     if v_code in p.setdefault("disabled_vehicles", []):
@@ -2530,6 +2534,7 @@ async def main():
                                     play_sound("purchase")
                                     save_data(all_data)
                                 elif v_code not in p["upgraded_vehicles"] and p["emeralds"] >= w_info["upg_cost"]:
+                                    workbench_preview_vehicle_idx = idx
                                     p["emeralds"] -= w_info["upg_cost"]
                                     p["upgraded_vehicles"].append(v_code)
                                     play_sound("purchase")
@@ -3719,6 +3724,32 @@ async def main():
                         toggle_btn = get_vehicle_toggle_rect(idx)
                         toggle_label = "Надеть" if is_disabled else "Снять"
                         draw_mc_button(screen, toggle_btn, toggle_label, toggle_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+
+                preview_world_idx = workbench_preview_vehicle_idx
+                preview_world = WORLDS[preview_world_idx]
+                preview_vehicle = preview_world["vehicle_type"]
+                preview_owned = preview_vehicle in player_data.get("owned_vehicles", [])
+                preview_active = preview_owned and preview_vehicle not in player_data.get("disabled_vehicles", [])
+                preview_upgraded = preview_active and preview_vehicle in player_data.get("upgraded_vehicles", [])
+                preview_type = preview_vehicle if preview_active else "foot"
+                preview_name = (
+                    preview_world["upg_name"] if preview_upgraded else
+                    preview_world["v_name"] if preview_active else "Пешком"
+                )
+                preview_rect = pygame.Rect(content_box.x + 18, 468, content_box.width - 36, 94)
+                pygame.draw.rect(screen, (205, 220, 225), preview_rect)
+                pygame.draw.rect(screen, MC_GUI_DARK, preview_rect, 2)
+                draw_steve_animated(
+                    screen, preview_rect.x + 73, preview_rect.y + 49,
+                    preview_type, preview_upgraded,
+                    helmet=player_data.get("helmet", "none"),
+                    anim_tick=anim_tick, avatar=player_data.get("avatar", "girl"),
+                )
+                preview_label = "На поле сейчас" if preview_world_idx == current_world_idx else "Примерка"
+                screen.blit(FONT_MED.render(f"{preview_label}: {preview_name}", True, DARK_TEXT),
+                            (preview_rect.x + 145, preview_rect.y + 17))
+                screen.blit(FONT_SMALL.render(f"Работает только здесь: {preview_world['name']}", True, DARK_TEXT),
+                            (preview_rect.x + 145, preview_rect.y + 48))
 
             elif workbench_tab == "ARTIFACTS":
                 for idx, (art_id, art_info) in enumerate(ARTIFACTS.items()):

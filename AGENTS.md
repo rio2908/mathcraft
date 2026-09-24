@@ -31,8 +31,12 @@ MathCraft — детская математическая игра на Pygame �
 | `pygbag.ini` | Исключения для web-сборки |
 | `.github/workflows/build.yml` | Проверка и публикация web-версии |
 | `.github/workflows/android.yml` | Ручная сборка debug APK |
+| `.github/workflows/android-rustore.yml` | Ручная сборка подписанного APK для RuStore |
 | `requirements-web.txt` | Зафиксированные зависимости web-разработки |
 | `requirements-android.txt` | Инструменты Android-сборки |
+
+Подготовка публикации и обновлений через RuStore описана в
+[`docs/RUSTORE.md`](docs/RUSTORE.md). Ключ подписи и пароли нельзя добавлять в Git.
 
 ## Обязательные игровые инварианты
 
