@@ -27,6 +27,7 @@ MathCraft — детская математическая игра на Pygame �
 | `game_content.py` | Статический контент, баланс и профили сложности |
 | `game_tasks.py` | Генерация маршрутов, примеров и повторений ошибок |
 | `game_storage.py` | Низкоуровневое чтение и запись файлов сохранения |
+| `game_music.py` | Синтез фоновых мелодий пяти биомов |
 | `buildozer.spec` | Параметры Android APK |
 | `pygbag.ini` | Исключения для web-сборки |
 | `.github/workflows/build.yml` | Проверка и публикация web-версии |
@@ -113,8 +114,8 @@ MathCraft — детская математическая игра на Pygame �
 
 ```powershell
 $python = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
-& $python -m py_compile main.py game_content.py game_tasks.py game_storage.py
-& $python -m pyflakes main.py game_content.py game_tasks.py game_storage.py
+& $python -m py_compile main.py game_content.py game_tasks.py game_storage.py game_music.py
+& $python -m pyflakes main.py game_content.py game_tasks.py game_storage.py game_music.py
 & $python -m unittest discover -s tests -v
 git diff --check
 ```
@@ -122,8 +123,8 @@ git diff --check
 Если используется виртуальное окружение проекта:
 
 ```powershell
-.\.venv\Scripts\python.exe -m py_compile main.py game_content.py game_tasks.py game_storage.py
-.\.venv\Scripts\python.exe -m pyflakes main.py game_content.py game_tasks.py game_storage.py
+.\.venv\Scripts\python.exe -m py_compile main.py game_content.py game_tasks.py game_storage.py game_music.py
+.\.venv\Scripts\python.exe -m pyflakes main.py game_content.py game_tasks.py game_storage.py game_music.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 

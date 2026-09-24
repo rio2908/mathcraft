@@ -42,7 +42,7 @@ jobs:
 
       - name: Validate Python source and tests
         run: |
-          python -m py_compile main.py game_content.py game_tasks.py game_storage.py
+          python -m py_compile main.py game_content.py game_tasks.py game_storage.py game_music.py
           python -m unittest discover -s tests -v
 
       - name: Restore release keystore

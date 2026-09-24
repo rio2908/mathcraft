@@ -46,8 +46,8 @@ $env:PYTHONUTF8 = "1"
 ## 4. Обязательные статические проверки
 
 ```powershell
-.\.venv\Scripts\python.exe -m py_compile main.py game_content.py game_tasks.py game_storage.py
-.\.venv\Scripts\python.exe -m pyflakes main.py game_content.py game_tasks.py game_storage.py
+.\.venv\Scripts\python.exe -m py_compile main.py game_content.py game_tasks.py game_storage.py game_music.py
+.\.venv\Scripts\python.exe -m pyflakes main.py game_content.py game_tasks.py game_storage.py game_music.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 git diff --check
 ```
@@ -220,6 +220,8 @@ Workflow сейчас собирает debug APK. На новом GitHub runner 
 
 Аудио создаётся только после первого клика/касания. Это ожидаемое ограничение
 autoplay. Проверьте `sound_enabled` и вызов `ensure_audio()` из события мыши.
+Фоновые мелодии создаются лениво при первом входе в каждый биом;
+`sync_biome_music()` должен запускать их лишь в игровых состояниях.
 
 ### APK не обновляется поверх установленного
 

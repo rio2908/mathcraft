@@ -23,6 +23,7 @@ from game_content import (
     WORLDS,
 )
 from game_storage import get_last_player, load_data, save_data, set_last_player
+from game_music import synthesize_biome_tune
 from game_tasks import (
     advance_heat_rune,
     advance_mob_regeneration,
@@ -35,7 +36,7 @@ from game_tasks import (
     is_final_boss_position,
     make_math_task as generate_math_task,
     make_review_task,
-    pick_logic_task,
+    pick_logic_task_with_history,
 )
 
 # Инициализация
@@ -69,10 +70,15 @@ FONT_TINY = get_safe_font(12)
 sound_enabled = True
 audio_attempted = False
 game_sounds = {}
+biome_music_sounds = {}
+music_channel = None
+music_world_idx = None
+
+MUSIC_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE"}
 
 def ensure_audio():
     """Initialize audio after a user gesture (required by browsers and Android)."""
-    global audio_attempted, game_sounds
+    global audio_attempted, game_sounds, music_channel
     if audio_attempted:
         return
     audio_attempted = True
@@ -104,8 +110,13 @@ def ensure_audio():
             "purchase": make_tone(880, 140),
             "victory": make_tone(990, 320, 0.22),
         }
+        pygame.mixer.set_num_channels(max(8, pygame.mixer.get_num_channels()))
+        pygame.mixer.set_reserved(1)
+        music_channel = pygame.mixer.Channel(0)
+        music_channel.set_volume(0.3)
     except (pygame.error, ValueError):
         game_sounds = {}
+        music_channel = None
 
 def play_sound(name):
     if sound_enabled:
@@ -113,6 +124,35 @@ def play_sound(name):
         sound = game_sounds.get(name)
         if sound:
             sound.play()
+
+
+def sync_biome_music(world_idx, state):
+    """Loop the active biome theme without taking channels from game effects."""
+    global music_world_idx, music_channel
+    if music_channel is None:
+        return
+    if not sound_enabled or state not in MUSIC_GAME_STATES:
+        if music_world_idx is not None:
+            music_channel.fadeout(180)
+            music_world_idx = None
+        return
+    if world_idx == music_world_idx:
+        return
+    try:
+        sound = biome_music_sounds.get(world_idx)
+        if sound is None:
+            sample_rate, sample_format, channels = pygame.mixer.get_init()
+            if sample_format != -16:
+                return
+            sound = pygame.mixer.Sound(buffer=synthesize_biome_tune(
+                world_idx, sample_rate, channels
+            ))
+            biome_music_sounds[world_idx] = sound
+        music_channel.play(sound, loops=-1, fade_ms=250)
+        music_world_idx = world_idx
+    except (pygame.error, ValueError):
+        music_channel = None
+        music_world_idx = None
 
 # Палитра Minecraft
 MC_GUI_BG = (198, 198, 198)
@@ -172,6 +212,8 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             "sage_task": create_sage_task(new_route),
             "sage_completed": False,
             "sage_artifact": None,
+            "sage_seen_questions": {"easy": [], "hard": []},
+            "sage_challenge": None,
             "pet": "none",
             "pet_errors": 0,
             "pets_lost": 0,
@@ -251,6 +293,12 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             p["sage_task"] = create_sage_task(p["marathon_route"], p.get("task_num", 1))
         if "sage_completed" not in p: p["sage_completed"] = False
         if "sage_artifact" not in p: p["sage_artifact"] = None
+        if not isinstance(p.get("sage_seen_questions"), dict):
+            p["sage_seen_questions"] = {}
+        for mode in ("easy", "hard"):
+            if not isinstance(p["sage_seen_questions"].get(mode), list):
+                p["sage_seen_questions"][mode] = []
+        p.setdefault("sage_challenge", None)
         if "pet" not in p: p["pet"] = "none"
         if "pet_errors" not in p: p["pet_errors"] = 0
         if "pets_lost" not in p: p["pets_lost"] = 0
@@ -1563,9 +1611,25 @@ def set_next_boss_task():
         boss_is_review = False
 
 def start_sage_encounter():
-    global game_state, sage_question, sage_answer, sage_choices, sage_msg, sage_finished, sage_won, sage_reward_name
+    global game_state, sage_question, sage_answer, sage_choices, sage_msg, sage_finished, sage_won, sage_reward_name, player_data
     game_state = "SAGE_CHALLENGE"
-    sage_question, sage_answer, sage_choices = pick_logic_task(player_name, difficulty=player_data.get("difficulty"))
+    challenge = player_data.get("sage_challenge")
+    if not challenge:
+        all_data = load_data()
+        p = all_data[player_name.strip()]
+        difficulty = p.get("difficulty", "easy")
+        history = p["sage_seen_questions"][difficulty]
+        question, answer, choices, updated_history = pick_logic_task_with_history(
+            player_name, history, difficulty=difficulty
+        )
+        challenge = {"question": question, "answer": answer, "choices": choices}
+        p["sage_seen_questions"][difficulty] = updated_history
+        p["sage_challenge"] = challenge
+        save_data(all_data)
+        player_data = p
+    sage_question = challenge["question"]
+    sage_answer = challenge["answer"]
+    sage_choices = challenge["choices"]
     sage_msg = "На загадку даётся только одна попытка!"
     sage_finished = False
     sage_won = False
@@ -1600,6 +1664,7 @@ def reset_entire_marathon():
         p["sage_task"] = create_sage_task(p["marathon_route"])
         p["sage_completed"] = False
         p["sage_artifact"] = None
+        p["sage_challenge"] = None
         p["marathon_elapsed_seconds"] = 0
         p["defeated_mob_worlds"] = []
         p["adaptive_tasks"] = next_adaptive_tasks
@@ -2685,6 +2750,8 @@ async def main():
             ft[4] -= 1
             if ft[4] <= 0:
                 floating_texts.remove(ft)
+
+        sync_biome_music(current_world_idx, game_state)
 
         # Отрисовка
         if game_state == "REGISTER":

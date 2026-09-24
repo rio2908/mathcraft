@@ -24,6 +24,7 @@ from game_tasks import (
     make_math_task,
     make_review_task,
     pick_logic_task,
+    pick_logic_task_with_history,
 )
 
 
@@ -239,6 +240,39 @@ class MathTaskTests(unittest.TestCase):
         self.assertNotEqual(question, previous)
         self.assertIn(answer, choices)
         self.assertEqual(len(choices), 3)
+
+    def test_logic_pools_are_large_and_have_valid_unique_answers(self):
+        for difficulty in ("easy", "hard"):
+            tasks = LOGIC_TASKS[difficulty]
+            self.assertGreaterEqual(len(tasks), 24)
+            self.assertEqual(len({task["question"] for task in tasks}), len(tasks))
+            for task in tasks:
+                self.assertEqual(len(task["choices"]), 3)
+                self.assertEqual(len(set(task["choices"])), 3)
+                self.assertIn(task["answer"], task["choices"])
+
+    def test_librarian_questions_do_not_repeat_until_pool_is_exhausted(self):
+        for difficulty in ("easy", "hard"):
+            history = []
+            for _ in LOGIC_TASKS[difficulty]:
+                question, answer, choices, history = pick_logic_task_with_history(
+                    "Игрок", history, difficulty
+                )
+                self.assertEqual(len(history), len(set(history)))
+                self.assertIn(answer, choices)
+            self.assertEqual(len(history), len(LOGIC_TASKS[difficulty]))
+            last_question = history[-1]
+            question, _, _, history = pick_logic_task_with_history(
+                "Игрок", history, difficulty
+            )
+            self.assertNotEqual(question, last_question)
+            self.assertEqual(history, [question])
+
+    def test_librarian_histories_are_independent(self):
+        first, _, _, first_history = pick_logic_task_with_history("Настя", [], "hard")
+        second, _, _, second_history = pick_logic_task_with_history("Ксения", [], "easy")
+        self.assertEqual(first_history, [first])
+        self.assertEqual(second_history, [second])
 
 
 class AdaptiveTaskTests(unittest.TestCase):

@@ -265,3 +265,27 @@ def pick_logic_task(profile_name, previous_question=None, difficulty=None):
     choices = list(task["choices"])
     random.shuffle(choices)
     return task["question"], task["answer"], choices
+
+
+def pick_logic_task_with_history(profile_name, seen_questions, difficulty=None):
+    """Pick an unseen riddle and return the updated per-profile cycle.
+
+    After the whole pool is seen, a new cycle starts without immediately
+    repeating the last question of the previous cycle.
+    """
+    difficulty = get_profile_difficulty(profile_name, difficulty)
+    tasks = LOGIC_TASKS[difficulty]
+    valid_questions = {task["question"] for task in tasks}
+    history = [question for question in seen_questions if question in valid_questions]
+    previous = history[-1] if history else None
+    seen = set(history)
+    if len(seen) == len(tasks):
+        history = []
+        seen.clear()
+    available = [task for task in tasks if task["question"] not in seen]
+    if previous and not history and len(available) > 1:
+        available = [task for task in available if task["question"] != previous]
+    task = random.choice(available)
+    choices = list(task["choices"])
+    random.shuffle(choices)
+    return task["question"], task["answer"], choices, history + [task["question"]]
