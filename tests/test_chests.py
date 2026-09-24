@@ -96,9 +96,8 @@ class ChestPersistenceTests(unittest.TestCase):
                     updated["Тест"]["hero_hearts"] = 2
                     save_data(updated)
                     app.player_data = updated["Тест"]
-                    app.game_state = "GAME"
                     pygame.event.post(pygame.event.Event(
-                        pygame.MOUSEBUTTONDOWN, pos=app.food_apple_btn.center, button=1
+                        pygame.MOUSEBUTTONDOWN, pos=app.get_food_use_rect(3).center, button=1
                     ))
                     while time.time() < deadline and load_data()["Тест"]["hero_hearts"] == 2:
                         time.sleep(0.02)
@@ -153,6 +152,18 @@ class ChestPersistenceTests(unittest.TestCase):
             assert p["clean_biome_streak"] == 0
             assert p["biome_had_error"]
             assert p["hero_hearts"] == 3
+
+            p["task_num"] = 1
+            p["clean_biome_streak"] = 0
+            p["biome_had_error"] = False
+            p["chest_task"] = None
+            assert "30 верных ответов на островках" in main.chest_progress_hint(p)
+            p["task_num"] = 6
+            assert "25 верных ответов на островках" in main.chest_progress_hint(p)
+            p["biome_had_error"] = True
+            assert "35 верных ответов на островках" in main.chest_progress_hint(p)
+            p["chest_task"] = 8
+            assert "3 верных ответа на островках" in main.chest_progress_hint(p)
 
             p["clean_biome_streak"] = 2
             p["biome_had_error"] = False

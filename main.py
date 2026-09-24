@@ -692,6 +692,11 @@ def get_vehicle_toggle_rect(index):
     return pygame.Rect(row_rect.right - 250, row_rect.y + 14, 115, 34)
 
 
+def get_food_use_rect(index):
+    row_rect, _, _ = get_shop_row_rects(index, len(POTIONS))
+    return pygame.Rect(row_rect.right - 250, row_rect.y + 14, 115, 34)
+
+
 def get_artifact_toggle_rect(index):
     row_rect, _, _ = get_shop_row_rects(index, len(ARTIFACTS))
     return pygame.Rect(row_rect.right - 250, row_rect.y + 14, 115, 34)
@@ -1705,11 +1710,28 @@ def take_battle_hit(profile):
 
 def chest_progress_hint(profile):
     if profile.get("chest_task"):
-        return "Сундук в этом биоме!"
-    streak = 0 if profile.get("biome_had_error") else profile.get("clean_biome_streak", 0)
-    remaining = 3 - streak
-    form = "чистый биом" if remaining == 1 else "чистых биома"
-    return f"До сундука: {remaining} {form}"
+        remaining = max(0, profile["chest_task"] - profile.get("task_num", 1) + 1)
+    elif profile.get("chest_pending_next_marathon"):
+        return "Сундук ждёт в следующем марафоне!"
+    else:
+        task_number = profile.get("task_num", 1)
+        step = ((task_number - 1) % STEPS_PER_WORLD) + 1 if task_number <= TOTAL_QUESTS else 1
+        current_biome_left = STEPS_PER_WORLD - step + 1
+        streak = max(0, min(2, profile.get("clean_biome_streak", 0)))
+        clean_biomes_needed = 3 - streak
+        if profile.get("biome_had_error"):
+            remaining = current_biome_left + clean_biomes_needed * STEPS_PER_WORLD
+        else:
+            remaining = current_biome_left + (clean_biomes_needed - 1) * STEPS_PER_WORLD
+    if 11 <= remaining % 100 <= 14:
+        answer_form = "верных ответов"
+    elif remaining % 10 == 1:
+        answer_form = "верный ответ"
+    elif 2 <= remaining % 10 <= 4:
+        answer_form = "верных ответа"
+    else:
+        answer_form = "верных ответов"
+    return f"До сундука: {remaining} {answer_form} на островках (бои без ошибок)"
 
 
 def start_chest_encounter():
@@ -1862,9 +1884,6 @@ sage_answer_buttons = [pygame.Rect(130 + i * 250, 370, 230, 58) for i in range(3
 sage_continue_btn = pygame.Rect(WIDTH // 2 - 145, 470, 290, 48)
 chest_answer_buttons = [pygame.Rect(180 + i * 220, 345, 190, 58) for i in range(3)]
 chest_continue_btn = pygame.Rect(WIDTH // 2 - 145, 465, 290, 50)
-food_apple_btn = pygame.Rect(15, 535, 165, 40)
-food_bread_btn = pygame.Rect(185, 535, 165, 40)
-
 nav_workbench = pygame.Rect(480, 10, 100, 34)
 nav_players = pygame.Rect(585, 10, 75, 34)
 nav_sound = pygame.Rect(665, 10, 80, 34)
@@ -2058,20 +2077,6 @@ async def main():
             if event.type == pygame.MOUSEBUTTONDOWN and hasattr(event, "pos"):
                 mouse_pos = event.pos
                 ensure_audio()
-
-            if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
-                    and game_state in ("GAME", "MOB_BATTLE", "BOSS_BATTLE")
-                    and not (game_state == "MOB_BATTLE" and (mob_hp == 0 or mob_failed_reset))
-                    and not (game_state == "BOSS_BATTLE" and boss_won)
-                    and (food_apple_btn.collidepoint(mouse_pos) or food_bread_btn.collidepoint(mouse_pos))):
-                kind = "apple" if food_apple_btn.collidepoint(mouse_pos) else "bread"
-                all_data = load_data()
-                p = all_data[player_name.strip()]
-                if consume_food(p, kind):
-                    save_data(all_data)
-                    player_data = p
-                    play_sound("purchase")
-                continue
 
             if event.type == pygame.QUIT:
                 persist_marathon_timer()
@@ -2877,6 +2882,12 @@ async def main():
                     elif workbench_tab == "POTIONS":
                         for idx, (pot_id, pot_info) in enumerate(POTIONS.items()):
                             _, _, b_pot = get_shop_row_rects(idx, len(POTIONS))
+                            if pot_id in ("apple", "bread") and get_food_use_rect(idx).collidepoint(mouse_pos):
+                                if consume_food(p, pot_id):
+                                    save_data(all_data)
+                                    player_data = p
+                                    play_sound("purchase")
+                                break
                             if b_pot.collidepoint(mouse_pos):
                                 if pot_id == "totem":
                                     if p.get("totems", 0) < pot_info["max"] and p["emeralds"] >= pot_info["cost"]:
@@ -3316,7 +3327,7 @@ async def main():
                 draw_readable_badge(screen, WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
 
             chest_hint = chest_progress_hint(player_data)
-            draw_readable_badge(screen, 820, 120, chest_hint, border_col=(115, 75, 35), text_col=WHITE, font=FONT_TINY)
+            draw_readable_badge(screen, 785, 550, chest_hint, border_col=(115, 75, 35), text_col=WHITE, font=FONT_TINY)
 
             if task_num <= TOTAL_QUESTS:
                 q_box = pygame.Rect(WIDTH//2 - 130, 152, 260, 58)
@@ -4070,25 +4081,22 @@ async def main():
                 preview_owned = preview_vehicle in player_data.get("owned_vehicles", [])
                 preview_active = preview_owned and preview_vehicle not in player_data.get("disabled_vehicles", [])
                 preview_upgraded = preview_active and preview_vehicle in player_data.get("upgraded_vehicles", [])
-                preview_type = preview_vehicle if preview_active else "foot"
-                preview_name = (
-                    preview_world["upg_name"] if preview_upgraded else
-                    preview_world["v_name"] if preview_active else "Пешком"
-                )
-                preview_rect = pygame.Rect(content_box.x + 18, 468, content_box.width - 36, 94)
-                pygame.draw.rect(screen, (205, 220, 225), preview_rect)
-                pygame.draw.rect(screen, MC_GUI_DARK, preview_rect, 2)
-                draw_steve_animated(
-                    screen, preview_rect.x + 73, preview_rect.y + 49,
-                    preview_type, preview_upgraded,
-                    helmet=player_data.get("helmet", "none"),
-                    anim_tick=anim_tick, avatar=player_data.get("avatar", "girl"),
-                )
-                preview_label = "На поле сейчас" if preview_world_idx == current_world_idx else "Примерка"
-                screen.blit(FONT_MED.render(f"{preview_label}: {preview_name}", True, DARK_TEXT),
-                            (preview_rect.x + 145, preview_rect.y + 17))
-                screen.blit(FONT_SMALL.render(f"Работает только здесь: {preview_world['name']}", True, DARK_TEXT),
-                            (preview_rect.x + 145, preview_rect.y + 48))
+                if preview_active:
+                    preview_name = preview_world["upg_name"] if preview_upgraded else preview_world["v_name"]
+                    preview_rect = pygame.Rect(content_box.x + 18, 468, content_box.width - 36, 94)
+                    pygame.draw.rect(screen, (205, 220, 225), preview_rect)
+                    pygame.draw.rect(screen, MC_GUI_DARK, preview_rect, 2)
+                    draw_steve_animated(
+                        screen, preview_rect.x + 73, preview_rect.y + 49,
+                        preview_vehicle, preview_upgraded,
+                        helmet=player_data.get("helmet", "none"),
+                        anim_tick=anim_tick, avatar=player_data.get("avatar", "girl"),
+                    )
+                    preview_label = "На поле сейчас" if preview_world_idx == current_world_idx else "Примерка"
+                    screen.blit(FONT_MED.render(f"{preview_label}: {preview_name}", True, DARK_TEXT),
+                                (preview_rect.x + 145, preview_rect.y + 17))
+                    screen.blit(FONT_SMALL.render(f"Работает только здесь: {preview_world['name']}", True, DARK_TEXT),
+                                (preview_rect.x + 145, preview_rect.y + 48))
 
             elif workbench_tab == "ARTIFACTS":
                 for idx, (art_id, art_info) in enumerate(ARTIFACTS.items()):
@@ -4159,6 +4167,12 @@ async def main():
                     else:
                         can_buy = player_data["emeralds"] >= pot_info["cost"]
                         draw_mc_button(screen, b_pot, "Купить", b_pot.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL, custom_bg=(130, 60, 170))
+                    if pot_id in ("apple", "bread"):
+                        use_btn = get_food_use_rect(idx)
+                        can_eat = cnt > 0 and player_data.get("hero_hearts", 3) < 3
+                        draw_mc_button(screen, use_btn, "Съесть", use_btn.collidepoint(mouse_pos) and can_eat,
+                                       can_eat, font_pref=FONT_SMALL,
+                                       custom_bg=(70, 140, 75) if can_eat else None)
 
             elif workbench_tab == "PETS":
                 for idx, (pet_id, pet_info) in enumerate(PETS.items()):
@@ -4189,18 +4203,7 @@ async def main():
         if game_state in ("GAME", "MOB_BATTLE", "BOSS_BATTLE"):
             hero_hearts = player_data.get("hero_hearts", 3)
             for heart_index in range(3):
-                draw_mc_heart(screen, 790 + heart_index * 31, 80, filled=heart_index < hero_hearts)
-            can_eat = hero_hearts < 3 and not (game_state == "BOSS_BATTLE" and boss_won)
-            if game_state == "MOB_BATTLE" and (mob_hp == 0 or mob_failed_reset):
-                can_eat = False
-            apples = player_data.get("food_apples", 0)
-            bread = player_data.get("food_bread", 0)
-            draw_mc_button(screen, food_apple_btn, f"Яблоко +1 ({apples})",
-                           food_apple_btn.collidepoint(mouse_pos) and can_eat and apples > 0,
-                           can_eat and apples > 0, font_pref=FONT_SMALL, custom_bg=(155, 62, 50))
-            draw_mc_button(screen, food_bread_btn, f"Хлеб +2 ({bread})",
-                           food_bread_btn.collidepoint(mouse_pos) and can_eat and bread > 0,
-                           can_eat and bread > 0, font_pref=FONT_SMALL, custom_bg=(156, 112, 55))
+                draw_mc_heart(screen, 30 + heart_index * 31, 550, filled=heart_index < hero_hearts)
 
         pygame.display.flip()
         await asyncio.sleep(0)

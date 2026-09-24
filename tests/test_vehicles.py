@@ -49,6 +49,7 @@ class VehicleShopTests(unittest.TestCase):
                         return original_draw(*args, **kwargs)
                     app.draw_steve_animated = record_draw
                 elif frame == 2:
+                    assert drawn_vehicles == []
                     click(app.get_shop_row_rects(0, len(app.WORLDS))[2])
                 elif frame == 3:
                     player = app.load_data()["Kid"]
