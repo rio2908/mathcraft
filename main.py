@@ -1714,8 +1714,8 @@ def chest_progress_hint(profile):
 
 def start_chest_encounter():
     global game_state, player_data
-    game_state = "CHEST_LOCK"
     if player_data.get("chest_challenge"):
+        game_state = "CHEST_LOCK"
         return
     all_data = load_data()
     p = all_data[player_name.strip()]
@@ -1736,6 +1736,7 @@ def start_chest_encounter():
     }
     save_data(all_data)
     player_data = p
+    game_state = "CHEST_LOCK"
 
 
 def answer_chest_key(profile, choice_index):

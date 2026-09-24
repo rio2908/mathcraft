@@ -165,7 +165,15 @@ class ChestPersistenceTests(unittest.TestCase):
             main.player_name = "Ксения"
             main.player_data = main.get_player("Ксения", remember_player=False)
             main.task_num = chest_task
+            main.game_state = "GAME"
+            original_save_data = main.save_data
+            def save_before_chest_screen(data):
+                assert main.game_state == "GAME"
+                original_save_data(data)
+            main.save_data = save_before_chest_screen
             main.start_chest_encounter()
+            main.save_data = original_save_data
+            assert main.game_state == "CHEST_LOCK"
             first_lock = dict(main.player_data["chest_challenge"])
             assert len(main.player_data["chest_seen_questions"]["easy"]) == 1
             main.player_data = main.get_player("Ксения", remember_player=False)
