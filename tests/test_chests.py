@@ -157,13 +157,13 @@ class ChestPersistenceTests(unittest.TestCase):
             p["clean_biome_streak"] = 0
             p["biome_had_error"] = False
             p["chest_task"] = None
-            assert "30 верных ответов на островках" in main.chest_progress_hint(p)
+            assert main.chest_progress_hint(p) == "До сундука: 30 правильных ответов"
             p["task_num"] = 6
-            assert "25 верных ответов на островках" in main.chest_progress_hint(p)
+            assert main.chest_progress_hint(p) == "До сундука: 25 правильных ответов"
             p["biome_had_error"] = True
-            assert "35 верных ответов на островках" in main.chest_progress_hint(p)
+            assert main.chest_progress_hint(p) == "До сундука: 35 правильных ответов"
             p["chest_task"] = 8
-            assert "3 верных ответа на островках" in main.chest_progress_hint(p)
+            assert main.chest_progress_hint(p) == "До сундука: 3 правильных ответа"
 
             p["clean_biome_streak"] = 2
             p["biome_had_error"] = False

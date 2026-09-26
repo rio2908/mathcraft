@@ -436,6 +436,24 @@ def grant_librarian_reward(profile):
     profile["sage_artifact"] = "emeralds"
     return "10 изумрудов (вещи заряжены)"
 
+
+def librarian_reward_card(profile):
+    """Return the saved librarian prize for the result screen."""
+    reward = profile.get("sage_artifact")
+    if reward == "emeralds":
+        return None, "10 изумрудов", "Все стартовые артефакты уже заряжены.", "Изумруды добавлены игроку"
+    repaired = isinstance(reward, str) and reward.startswith("repair:")
+    artifact_id = reward.split(":", 1)[1] if repaired else reward
+    if artifact_id in ARTIFACTS:
+        info = ARTIFACTS[artifact_id]
+        charges = profile.get("artifact_charges", {}).get(artifact_id, 0)
+        status = (
+            f"Восстановлен 1 заряд · теперь {charges}/{info['max_charges']}"
+            if repaired else f"Получено зарядов: {charges}/{info['max_charges']}"
+        )
+        return artifact_id, info["name"], info["desc"], status
+    return None, "Награда", "Загадка решена верно.", ""
+
 def make_math_task(ops_list, force_missing=False):
     """Generate a task for the currently selected player."""
     difficulty = player_data.get("difficulty") if player_data else None
@@ -1192,26 +1210,61 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
 
 def draw_dragon_marker(surf, cx, cy, anim_tick=0):
     """Draw a recognisable miniature dragon on the final route tile."""
-    flap = int(math.sin(anim_tick * 0.18) * 5)
-    body = (175, 35, 45)
-    wing = (125, 20, 35)
-    outline = (50, 8, 15)
-    pygame.draw.polygon(
-        surf,
-        wing,
-        [(cx - 5, cy - 7), (cx - 30, cy - 22 + flap), (cx - 17, cy + 7)],
-    )
-    pygame.draw.polygon(
-        surf,
-        wing,
-        [(cx + 5, cy - 7), (cx + 30, cy - 22 + flap), (cx + 17, cy + 7)],
-    )
-    pygame.draw.line(surf, outline, (cx - 10, cy + 5), (cx - 28, cy + 14), 4)
-    pygame.draw.ellipse(surf, body, (cx - 14, cy - 13, 28, 25))
-    pygame.draw.rect(surf, body, (cx + 8, cy - 20, 17, 14))
-    pygame.draw.rect(surf, (245, 210, 80), (cx + 18, cy - 16, 4, 4))
-    pygame.draw.polygon(surf, outline, [(cx + 12, cy - 20), (cx + 16, cy - 28), (cx + 19, cy - 19)])
-    pygame.draw.rect(surf, outline, (cx - 14, cy + 8, 28, 4))
+    flap = int(math.sin(anim_tick * 0.18) * 7)
+    outline = (55, 10, 15)
+    wing = (130, 25, 35)
+    membrane = (210, 55, 50)
+    body = (185, 35, 40)
+    light = (235, 85, 55)
+    pygame.draw.polygon(surf, outline, [
+        (cx - 14, cy + 10), (cx - 42, cy + 2), (cx - 35, cy + 15),
+        (cx - 49, cy + 22), (cx - 16, cy + 20),
+    ])
+    pygame.draw.polygon(surf, outline, [
+        (cx - 11, cy + 2), (cx - 31, cy - 43 + flap),
+        (cx - 18, cy - 32 + flap), (cx - 5, cy - 37 + flap),
+        (cx + 9, cy - 5),
+    ])
+    pygame.draw.polygon(surf, wing, [
+        (cx - 9, cy + 1), (cx - 27, cy - 36 + flap),
+        (cx - 17, cy - 27 + flap), (cx - 4, cy - 32 + flap),
+        (cx + 5, cy - 3),
+    ])
+    pygame.draw.polygon(surf, membrane, [
+        (cx + 2, cy + 2), (cx + 11, cy - 38 - flap),
+        (cx + 19, cy - 29 - flap), (cx + 30, cy - 34 - flap),
+        (cx + 22, cy + 6),
+    ])
+    pygame.draw.ellipse(surf, outline, (cx - 19, cy - 8, 43, 31))
+    pygame.draw.ellipse(surf, body, (cx - 16, cy - 6, 37, 26))
+    pygame.draw.polygon(surf, light, [
+        (cx - 10, cy + 10), (cx + 16, cy + 8), (cx + 8, cy + 17),
+    ])
+    pygame.draw.polygon(surf, outline, [
+        (cx + 11, cy - 5), (cx + 23, cy - 28),
+        (cx + 31, cy - 25), (cx + 20, cy + 5),
+    ])
+    pygame.draw.polygon(surf, body, [
+        (cx + 16, cy - 5), (cx + 24, cy - 25),
+        (cx + 30, cy - 22), (cx + 22, cy + 5),
+    ])
+    pygame.draw.rect(surf, outline, (cx + 22, cy - 36, 26, 18))
+    pygame.draw.rect(surf, body, (cx + 24, cy - 34, 23, 14))
+    pygame.draw.polygon(surf, outline, [
+        (cx + 39, cy - 23), (cx + 53, cy - 22),
+        (cx + 52, cy - 15), (cx + 36, cy - 16),
+    ])
+    pygame.draw.rect(surf, light, (cx + 41, cy - 20, 9, 3))
+    pygame.draw.polygon(surf, outline, [
+        (cx + 25, cy - 35), (cx + 26, cy - 44), (cx + 32, cy - 35),
+    ])
+    pygame.draw.polygon(surf, outline, [
+        (cx + 37, cy - 35), (cx + 42, cy - 42), (cx + 43, cy - 33),
+    ])
+    pygame.draw.rect(surf, (255, 220, 95), (cx + 39, cy - 30, 4, 4))
+    for foot_x in (cx - 10, cx + 12):
+        pygame.draw.rect(surf, outline, (foot_x, cy + 15, 7, 11))
+        pygame.draw.rect(surf, (245, 215, 145), (foot_x + 3, cy + 24, 5, 3))
 
 
 def draw_mob_defeat_effect(surf, cx, cy, timer):
@@ -1279,7 +1332,7 @@ def draw_ender_dragon_boss(surf, cx, cy, anim_tick=0, flash_red=False):
     pygame.draw.rect(surf, WHITE, (cx - 14, cy - 63, 4, 4))
     pygame.draw.rect(surf, WHITE, (cx + 10, cy - 63, 4, 4))
 
-def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_tick=0, is_moving=False, squash=1.0, sword_swing=0, avatar="girl"):
+def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_tick=0, is_moving=False, squash=1.0, sword_swing=0, avatar="girl", show_sword=False):
     walk_cycle = math.sin(anim_tick * 0.25) if is_moving else math.sin(anim_tick * 0.06) * 0.4
     leg_swing = int(walk_cycle * 6)
     cy += int((1.0 - squash) * 15)
@@ -1366,13 +1419,13 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
     else:
         pygame.draw.rect(surf, (20, 155, 170), (sx - 10, sy + 10, 20, 19))
 
-    if sword_swing > 0:
+    if show_sword and sword_swing > 0:
         blade_angle = math.radians(45 - sword_swing * 6)
         bx = sx + 14 + int(math.cos(blade_angle) * 24)
         by = sy + int(math.sin(blade_angle) * 24)
         pygame.draw.line(surf, (50, 220, 210), (sx + 12, sy + 8), (bx, by), 5)
         pygame.draw.line(surf, (140, 95, 45), (sx + 12, sy + 8), (sx + 8, sy + 12), 4)
-    else:
+    elif show_sword:
         pygame.draw.line(surf, (50, 220, 210), (sx + 14, sy + 4), (sx + 26, sy - 12), 4)
         pygame.draw.line(surf, (140, 95, 45), (sx + 12, sy + 6), (sx + 10, sy + 10), 3)
 
@@ -1415,7 +1468,6 @@ marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0))
 timer_save_accumulator = 0.0
 combo_count = 0
 current_world_idx, step_in_world = get_task_position(task_num)
-workbench_preview_vehicle_idx = current_world_idx
 
 hero_x = float(platforms[step_in_world][0])
 hero_y = float(platforms[step_in_world][1] - 24)
@@ -1505,14 +1557,6 @@ def spawn_hit_sparks(x, y, is_shield=False):
             random.uniform(-3.5, 3.5), random.uniform(-3.5, 2.5),
             random.choice(col_choices),
             random.randint(16, 28), random.randint(4, 7)
-        ])
-
-def spawn_speed_bubbles(x, y):
-    if random.random() < 0.35:
-        particles.append([
-            x + random.randint(-15, 15), y + random.randint(-10, 10),
-            random.uniform(-0.4, 0.4), random.uniform(-1.5, -0.6),
-            (80, 255, 120), random.randint(20, 35), random.randint(2, 4)
         ])
 
 def format_duration(seconds):
@@ -1724,14 +1768,14 @@ def chest_progress_hint(profile):
         else:
             remaining = current_biome_left + (clean_biomes_needed - 1) * STEPS_PER_WORLD
     if 11 <= remaining % 100 <= 14:
-        answer_form = "верных ответов"
+        answer_form = "правильных ответов"
     elif remaining % 10 == 1:
-        answer_form = "верный ответ"
+        answer_form = "правильный ответ"
     elif 2 <= remaining % 10 <= 4:
-        answer_form = "верных ответа"
+        answer_form = "правильных ответа"
     else:
-        answer_form = "верных ответов"
-    return f"До сундука: {remaining} {answer_form} на островках (бои без ошибок)"
+        answer_form = "правильных ответов"
+    return f"До сундука: {remaining} {answer_form}"
 
 
 def start_chest_encounter():
@@ -1937,6 +1981,14 @@ def get_login_profiles():
     start = login_page * LOGIN_PAGE_SIZE
     return known_profiles[start:start + LOGIN_PAGE_SIZE]
 
+
+def finish_marathon_to_menu():
+    """Leave a completed marathon without resetting its saved results."""
+    global game_state, login_show_all_players, login_page
+    login_show_all_players = True
+    login_page = 0
+    game_state = "LOGIN"
+
 def layout_login_profile_buttons(profile_names):
     for index, profile_name in enumerate(profile_names):
         row_y = 252 + index * 70
@@ -2023,12 +2075,14 @@ def submit_registration():
     enter_player(new_name)
 
 mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
-boss_btn_finish = pygame.Rect(WIDTH // 2 - 150, 475, 300, 48)
+boss_btn_stats = pygame.Rect(220, 475, 270, 48)
+boss_btn_finish = pygame.Rect(510, 475, 270, 48)
 review_btn_continue = pygame.Rect(WIDTH // 2 - 160, 500, 320, 48)
 final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 385, 280, 46)
 stats_prev_btn = pygame.Rect(WIDTH // 2 - 250, 500, 120, 42)
 stats_next_btn = pygame.Rect(WIDTH // 2 + 130, 500, 120, 42)
 stats_restart_btn = pygame.Rect(WIDTH // 2 - 120, 500, 240, 42)
+stats_finish_btn = pygame.Rect(725, 35, 125, 38)
 history_back_btn = pygame.Rect(145, 520, 130, 40)
 history_prev_btn = pygame.Rect(WIDTH // 2 - 150, 520, 110, 40)
 history_next_btn = pygame.Rect(WIDTH // 2 + 40, 520, 110, 40)
@@ -2050,7 +2104,7 @@ async def main():
     global mob_hint_hidden, boss_hint_hidden
     global mob_regen_elapsed, mob_regen_started, mob_regen_flash_timer
     global mob_heat_seconds_left, mob_heat_save_accumulator
-    global boss_msg, boss_won, workbench_tab, workbench_preview_vehicle_idx, stats_page, sound_enabled
+    global boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
     global history_page, history_selected_index
     global sage_msg, sage_finished, sage_won, sage_reward_name
     global marathon_elapsed_seconds, timer_save_accumulator, boss_speed_bonus, boss_previous_time
@@ -2060,6 +2114,7 @@ async def main():
     global registration_error, registration_name_active
 
     running = True
+    workbench_notice = ""
 
     while running:
         anim_tick += 1
@@ -2212,7 +2267,7 @@ async def main():
                         continue
                     if nav_workbench.collidepoint(mouse_pos):
                         persist_marathon_timer()
-                        workbench_preview_vehicle_idx = current_world_idx
+                        workbench_notice = ""
                         game_state = "WORKBENCH"
                         continue
                     if nav_players.collidepoint(mouse_pos):
@@ -2314,7 +2369,7 @@ async def main():
                                     else:
                                         play_sound("wrong")
                                         p["boss_penalty_errors"] = p.get("boss_penalty_errors", 0) + 1
-                                    pet_error = register_pet_error(p)
+                                    register_pet_error(p)
                                     p.setdefault("marathon_error_details", []).append({
                                         "world": current_world_idx + 1,
                                         "task": task_num,
@@ -2332,17 +2387,11 @@ async def main():
                                         "protected_by_helmet": bool(helmet_save)
                                     })
                                     combo_count = 0
-                                    if helmet_save and helmet_save["broken"]:
-                                        message = f"{helmet_save['helmet_name']} сломался! Ошибка не усилила Дракона."
-                                        message_color = MC_GOLD
-                                    elif helmet_save:
-                                        message = f"Шлем защитил! Прочность: {helmet_save['remaining']} из {helmet_save['maximum']}"
+                                    if helmet_save:
+                                        message = "Дракон не стал сильнее."
                                         message_color = MC_GOLD
                                     else:
-                                        message = "Ой, крипер взорвал ответ! Дракон стал сильнее."
-                                        message_color = RED
-                                    if pet_error and pet_error["ran_away"]:
-                                        message = f"{pet_error['pet_name']} убежал после второй ошибки!"
+                                        message = "Дракон стал сильнее."
                                         message_color = RED
                                     spawn_dust(hero_x, hero_y, color=(80, 80, 80))
 
@@ -2433,9 +2482,11 @@ async def main():
             elif game_state == "BOSS_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if boss_won:
-                        if boss_btn_finish.collidepoint(mouse_pos):
+                        if boss_btn_stats.collidepoint(mouse_pos):
                             stats_page = 0
                             game_state = "FINAL_STATS"
+                        elif boss_btn_finish.collidepoint(mouse_pos):
+                            finish_marathon_to_menu()
                     elif boss_book_btn.collidepoint(mouse_pos):
                         all_data = load_data()
                         p = all_data[player_name.strip()]
@@ -2529,6 +2580,8 @@ async def main():
                         stats_page += 1
                     elif stats_restart_btn.collidepoint(mouse_pos):
                         reset_entire_marathon()
+                    elif stats_finish_btn.collidepoint(mouse_pos):
+                        finish_marathon_to_menu()
 
             elif game_state == "HISTORY":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -2770,10 +2823,10 @@ async def main():
                         game_state = "GAME"
                         continue
 
+                    workbench_notice = ""
                     if tab_helmets_rect.collidepoint(mouse_pos): workbench_tab = "HELMETS"
                     elif tab_vehicles_rect.collidepoint(mouse_pos):
                         workbench_tab = "VEHICLES"
-                        workbench_preview_vehicle_idx = current_world_idx
                     elif tab_artifacts_rect.collidepoint(mouse_pos): workbench_tab = "ARTIFACTS"
                     elif tab_potions_rect.collidepoint(mouse_pos): workbench_tab = "POTIONS"
                     elif tab_pets_rect.collidepoint(mouse_pos): workbench_tab = "PETS"
@@ -2792,14 +2845,20 @@ async def main():
                                     )
                                     if p.get("helmet") == h_id and h_id != "none":
                                         p["helmet"] = "none"
+                                        workbench_notice = "Шлем снят: герой больше не защищён."
                                         save_data(all_data)
                                     elif h_id == "none" or current_durability > 0:
                                         p["helmet"] = h_id
+                                        workbench_notice = (
+                                            f"Надет {h_info['name']}: защита {current_durability}/{h_info['max_durability']}."
+                                            if h_id != "none" else "Шлем снят: герой больше не защищён."
+                                        )
                                         save_data(all_data)
                                     elif p["emeralds"] >= h_info.get("repair_cost", 0):
                                         p["emeralds"] -= h_info["repair_cost"]
                                         p["helmet_durability"][h_id] = h_info["max_durability"]
                                         p["helmet"] = h_id
+                                        workbench_notice = f"{h_info['name']} починен и надет."
                                         play_sound("purchase")
                                         save_data(all_data)
                                 elif p["emeralds"] >= h_info["cost"]:
@@ -2807,6 +2866,7 @@ async def main():
                                     p["unlocked_helmets"].append(h_id)
                                     p.setdefault("helmet_durability", {})[h_id] = h_info.get("max_durability", 0)
                                     p["helmet"] = h_id
+                                    workbench_notice = f"Куплен и надет {h_info['name']}."
                                     play_sound("purchase")
                                     save_data(all_data)
                                 player_data = p
@@ -2817,7 +2877,6 @@ async def main():
                             toggle_btn = get_vehicle_toggle_rect(idx)
                             v_code = w_info["vehicle_type"]
                             if toggle_btn.collidepoint(mouse_pos) and v_code in p.get("owned_vehicles", []):
-                                workbench_preview_vehicle_idx = idx
                                 disabled = p.setdefault("disabled_vehicles", [])
                                 if v_code in disabled:
                                     disabled.remove(v_code)
@@ -2827,7 +2886,6 @@ async def main():
                                 player_data = p
                             elif b_upg.collidepoint(mouse_pos):
                                 if v_code not in p.get("owned_vehicles", []) and p["emeralds"] >= w_info["v_cost"]:
-                                    workbench_preview_vehicle_idx = idx
                                     p["emeralds"] -= w_info["v_cost"]
                                     p.setdefault("owned_vehicles", []).append(v_code)
                                     if v_code in p.setdefault("disabled_vehicles", []):
@@ -2835,7 +2893,6 @@ async def main():
                                     play_sound("purchase")
                                     save_data(all_data)
                                 elif v_code not in p["upgraded_vehicles"] and p["emeralds"] >= w_info["upg_cost"]:
-                                    workbench_preview_vehicle_idx = idx
                                     p["emeralds"] -= w_info["upg_cost"]
                                     p["upgraded_vehicles"].append(v_code)
                                     play_sound("purchase")
@@ -2883,7 +2940,11 @@ async def main():
                         for idx, (pot_id, pot_info) in enumerate(POTIONS.items()):
                             _, _, b_pot = get_shop_row_rects(idx, len(POTIONS))
                             if pot_id in ("apple", "bread") and get_food_use_rect(idx).collidepoint(mouse_pos):
+                                hearts_before = p.get("hero_hearts", 3)
                                 if consume_food(p, pot_id):
+                                    gained = p["hero_hearts"] - hearts_before
+                                    heart_word = "сердце" if gained == 1 else "сердца"
+                                    workbench_notice = f"Герой восстановил {gained} {heart_word}: теперь {p['hero_hearts']}/3."
                                     save_data(all_data)
                                     player_data = p
                                     play_sound("purchase")
@@ -2984,9 +3045,6 @@ async def main():
                     hero_y = (platforms[0][1] - 24) - 75 * math.sin(move_progress * math.pi)
                 else:
                     hero_y = (platforms[0][1] - 24) - 9 * abs(math.sin(move_progress * math.pi))
-
-        if combo_count >= 5 and game_state == "GAME":
-            spawn_speed_bubbles(hero_x, hero_y)
 
         for pt in particles[:]:
             pt[0] += pt[2]
@@ -3253,7 +3311,8 @@ async def main():
             draw_steve_animated(screen, int(hero_x), int(hero_y), travel_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"), 
                                 anim_tick=anim_tick, is_moving=is_moving, squash=squash_val,
-                                sword_swing=sword_swing_timer, avatar=player_data.get("avatar", "girl"))
+                                sword_swing=sword_swing_timer, avatar=player_data.get("avatar", "girl"),
+                                show_sword=has_active_artifact(player_data, "sharp_sword"))
             if player_data.get("pet", "none") == "wolf":
                 pet_x = int(hero_x - 48 if not is_moving else hero_x - 58)
                 draw_pet_wolf(screen, pet_x, int(hero_y + 23), anim_tick=anim_tick)
@@ -3412,11 +3471,13 @@ async def main():
             pygame.draw.rect(screen, (100, 100, 105), (210, 205, 140, 20))
             pygame.draw.rect(screen, (60, 60, 65), (210, 205, 140, 20), 2)
             s_lbl = FONT_SMALL.render(player_name, True, DARK_TEXT)
-            screen.blit(s_lbl, (280 - s_lbl.get_width() // 2, 95))
+            screen.blit(s_lbl, (280 - s_lbl.get_width() // 2, 115))
             draw_steve_animated(screen, 280, 175, travel_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer,
-                                avatar=player_data.get("avatar", "girl"))
+                                avatar=player_data.get("avatar", "girl"),
+                                show_sword=(has_active_artifact(player_data, "sharp_sword")
+                                            or player_data.get("sharp_sword_task") == task_num))
             if player_data.get("pet", "none") == "wolf":
                 draw_pet_wolf(screen, 220, 205, anim_tick=anim_tick)
 
@@ -3596,23 +3657,30 @@ async def main():
                     border_col=MC_GOLD, text_col=WHITE, font=FONT_SMALL
                 )
             else:
-                reward_box = pygame.Rect(WIDTH // 2 - 250, 245, 500, 150)
+                reward_box = pygame.Rect(WIDTH // 2 - 255, 235, 510, 220 if sage_won else 160)
                 box_color = (245, 235, 190) if sage_won else (235, 220, 220)
                 border_color = MC_GOLD if sage_won else RED
                 pygame.draw.rect(screen, box_color, reward_box, border_radius=8)
                 pygame.draw.rect(screen, border_color, reward_box, 3, border_radius=8)
                 result_title = "ЗАГАДКА РАЗГАДАНА!" if sage_won else "ОТВЕТ НЕВЕРНЫЙ"
                 reward_title = FONT_TITLE.render(result_title, True, GREEN if sage_won else RED)
-                screen.blit(reward_title, (WIDTH // 2 - reward_title.get_width() // 2, 270))
-                result_text = (
-                    f"Награда библиотекаря: {sage_reward_name}"
-                    if sage_won else
-                    sage_msg
-                )
-                draw_centered_wrapped_text(
-                    screen, result_text, FONT_BIG,
-                    (85, 60, 25), WIDTH // 2, 320, 450
-                )
+                screen.blit(reward_title, (WIDTH // 2 - reward_title.get_width() // 2, 253))
+                if sage_won:
+                    artifact_id, reward_name, reward_desc, reward_status = librarian_reward_card(player_data)
+                    draw_mc_slot_frame(screen, reward_box.x + 25, 310, 72)
+                    if artifact_id:
+                        draw_item_icon(screen, artifact_id, reward_box.x + 61, 346)
+                    else:
+                        draw_emerald(screen, reward_box.x + 61, 346, r=22)
+                    text_x = reward_box.x + 113
+                    screen.blit(FONT_BIG.render(reward_name, True, (85, 60, 25)), (text_x, 303))
+                    draw_centered_wrapped_text(screen, reward_desc, FONT_SMALL, DARK_TEXT,
+                                               text_x + 175, 340, 345)
+                    status_surface = FONT_SMALL.render(reward_status, True, (35, 110, 55))
+                    screen.blit(status_surface, (text_x, 408))
+                else:
+                    draw_centered_wrapped_text(screen, sage_msg, FONT_BIG, (85, 60, 25),
+                                               WIDTH // 2, 320, 450)
                 draw_mc_button(
                     screen, sage_continue_btn,
                     "Забрать награду и продолжить" if sage_won else "Продолжить путь",
@@ -3666,7 +3734,8 @@ async def main():
             draw_steve_animated(screen, 280, 185, travel_type, is_upgraded,
                                 helmet=player_data.get("helmet", "none"),
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer,
-                                avatar=player_data.get("avatar", "girl"))
+                                avatar=player_data.get("avatar", "girl"),
+                                show_sword=has_active_artifact(player_data, "sharp_sword"))
             if player_data.get("pet", "none") == "wolf":
                 draw_pet_wolf(screen, 220, 215, anim_tick=anim_tick)
             
@@ -3739,7 +3808,9 @@ async def main():
                 screen.blit(FONT_SMALL.render(speed_text, True, MC_GOLD), (WIDTH // 2 - FONT_SMALL.size(speed_text)[0] // 2, 355))
                 screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 382))
 
-                draw_mc_button(screen, boss_btn_finish, "Посмотреть статистику", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED)
+                draw_mc_button(screen, boss_btn_stats, "Статистика", boss_btn_stats.collidepoint(mouse_pos), font_pref=FONT_MED)
+                draw_mc_button(screen, boss_btn_finish, "Завершить", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED,
+                               custom_bg=(65, 145, 75))
 
         elif game_state == "FINAL_STATS":
             screen.fill((28, 32, 42))
@@ -3749,6 +3820,8 @@ async def main():
 
             stats_title = FONT_TITLE.render("СТАТИСТИКА МАРАФОНА", True, (35, 115, 65))
             screen.blit(stats_title, (WIDTH // 2 - stats_title.get_width() // 2, 42))
+            draw_mc_button(screen, stats_finish_btn, "Завершить", stats_finish_btn.collidepoint(mouse_pos),
+                           font_pref=FONT_TINY, custom_bg=(65, 145, 75))
 
             error_details = player_data.get("marathon_error_details", [])
             total_errors = player_data.get("marathon_errors", len(error_details))
@@ -4075,29 +4148,6 @@ async def main():
                         toggle_label = "Надеть" if is_disabled else "Снять"
                         draw_mc_button(screen, toggle_btn, toggle_label, toggle_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
 
-                preview_world_idx = workbench_preview_vehicle_idx
-                preview_world = WORLDS[preview_world_idx]
-                preview_vehicle = preview_world["vehicle_type"]
-                preview_owned = preview_vehicle in player_data.get("owned_vehicles", [])
-                preview_active = preview_owned and preview_vehicle not in player_data.get("disabled_vehicles", [])
-                preview_upgraded = preview_active and preview_vehicle in player_data.get("upgraded_vehicles", [])
-                if preview_active:
-                    preview_name = preview_world["upg_name"] if preview_upgraded else preview_world["v_name"]
-                    preview_rect = pygame.Rect(content_box.x + 18, 468, content_box.width - 36, 94)
-                    pygame.draw.rect(screen, (205, 220, 225), preview_rect)
-                    pygame.draw.rect(screen, MC_GUI_DARK, preview_rect, 2)
-                    draw_steve_animated(
-                        screen, preview_rect.x + 73, preview_rect.y + 49,
-                        preview_vehicle, preview_upgraded,
-                        helmet=player_data.get("helmet", "none"),
-                        anim_tick=anim_tick, avatar=player_data.get("avatar", "girl"),
-                    )
-                    preview_label = "На поле сейчас" if preview_world_idx == current_world_idx else "Примерка"
-                    screen.blit(FONT_MED.render(f"{preview_label}: {preview_name}", True, DARK_TEXT),
-                                (preview_rect.x + 145, preview_rect.y + 17))
-                    screen.blit(FONT_SMALL.render(f"Работает только здесь: {preview_world['name']}", True, DARK_TEXT),
-                                (preview_rect.x + 145, preview_rect.y + 48))
-
             elif workbench_tab == "ARTIFACTS":
                 for idx, (art_id, art_info) in enumerate(ARTIFACTS.items()):
                     row_rect, slot_rect, b_art = get_shop_row_rects(idx, len(ARTIFACTS))
@@ -4123,7 +4173,7 @@ async def main():
                     if is_bought:
                         toggle_btn = get_artifact_toggle_rect(idx)
                         can_toggle = charges > 0
-                        toggle_label = "Отключить" if is_active else "Включить"
+                        toggle_label = "Снять" if is_active else "Надеть"
                         draw_mc_button(screen, toggle_btn, toggle_label,
                                        toggle_btn.collidepoint(mouse_pos) and can_toggle,
                                        can_toggle, font_pref=FONT_SMALL)
@@ -4200,10 +4250,49 @@ async def main():
                         can_buy = player_data["emeralds"] >= pet_info["cost"]
                         draw_mc_button(screen, b_pet, "Купить", b_pet.collidepoint(mouse_pos) and can_buy, can_buy, font_pref=FONT_SMALL)
 
+            hero_card = pygame.Rect(12, 115, 116, 350)
+            pygame.draw.rect(screen, (215, 220, 225), hero_card)
+            pygame.draw.rect(screen, MC_GUI_BLACK, hero_card, 2)
+            hero_label = FONT_SMALL.render("Герой", True, DARK_TEXT)
+            screen.blit(hero_label, (hero_card.centerx - hero_label.get_width() // 2, 128))
+            portrait = pygame.Surface((80, 100), pygame.SRCALPHA)
+            draw_steve_animated(
+                portrait, 40, 45, travel_type, is_upgraded,
+                helmet=player_data.get("helmet", "none"), anim_tick=anim_tick,
+                avatar=player_data.get("avatar", "girl"),
+                show_sword=has_active_artifact(player_data, "sharp_sword"),
+            )
+            screen.blit(pygame.transform.scale(portrait, (100, 125)), (20, 150))
+            life_label = FONT_TINY.render("Жизни", True, DARK_TEXT)
+            screen.blit(life_label, (hero_card.centerx - life_label.get_width() // 2, 273))
+            for heart_index in range(3):
+                draw_mc_heart(screen, 38 + heart_index * 31, 305,
+                              filled=heart_index < player_data.get("hero_hearts", 3))
+            helmet_id = player_data.get("helmet", "none")
+            helmet_info = HELMETS.get(helmet_id, HELMETS["none"])
+            draw_centered_wrapped_text(screen, helmet_info["name"], FONT_TINY, DARK_TEXT,
+                                       hero_card.centerx, 333, 108)
+            if helmet_id != "none":
+                durability = player_data.get("helmet_durability", {}).get(
+                    helmet_id, helmet_info["max_durability"]
+                )
+                shield_text = f"Защита: {durability}/{helmet_info['max_durability']}"
+                shield_label = FONT_TINY.render(shield_text, True, DARK_TEXT)
+                screen.blit(shield_label, (hero_card.centerx - shield_label.get_width() // 2, 389))
+                draw_centered_wrapped_text(screen, "Не даёт усилить Дракона", FONT_TINY,
+                                           DARK_TEXT, hero_card.centerx, 411, 104)
+            if workbench_notice:
+                draw_readable_badge(screen, WIDTH // 2, 551, workbench_notice,
+                                    border_col=(70, 135, 75), text_col=WHITE, font=FONT_SMALL)
+
         if game_state in ("GAME", "MOB_BATTLE", "BOSS_BATTLE"):
             hero_hearts = player_data.get("hero_hearts", 3)
             for heart_index in range(3):
-                draw_mc_heart(screen, 30 + heart_index * 31, 550, filled=heart_index < hero_hearts)
+                if game_state == "GAME":
+                    heart_x, heart_y = 30 + heart_index * 31, 550
+                else:
+                    heart_x, heart_y = 280 - (3 * 26) // 2 + 13 + heart_index * 26, 95
+                draw_mc_heart(screen, heart_x, heart_y, filled=heart_index < hero_hearts)
 
         pygame.display.flip()
         await asyncio.sleep(0)

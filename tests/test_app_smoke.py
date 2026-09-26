@@ -64,6 +64,14 @@ class AppSmokeTests(unittest.TestCase):
             main.draw_mob(sprite_surface, 60, 60, "creeper")
             if sprite_surface.get_at((90, 60))[:3] != (35, 45, 55):
                 raise AssertionError("Mob drawing must not add a glowing backdrop")
+
+            main.game_state = "FINAL_STATS"
+            main.login_show_all_players = False
+            main.login_page = 2
+            main.finish_marathon_to_menu()
+            assert main.game_state == "LOGIN"
+            assert main.login_show_all_players
+            assert main.login_page == 0
             """
         )
         environment = os.environ.copy()
@@ -90,6 +98,56 @@ class AppSmokeTests(unittest.TestCase):
             0,
             msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
         )
+
+    def test_finish_buttons_open_player_selection(self):
+        child_code = textwrap.dedent("""
+            import sys
+            import pygame
+
+            original_flip = pygame.display.flip
+            frame = 0
+            def click(rect):
+                pygame.event.post(pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN, button=1, pos=rect.center
+                ))
+            def flip():
+                global frame
+                original_flip()
+                frame += 1
+                app = sys.modules["main"]
+                if frame == 1:
+                    app.player_name = "Kid"
+                    app.player_data = app.get_player("Kid", remember_player=False)
+                    app.boss_won = True
+                    app.game_state = "BOSS_BATTLE"
+                elif frame == 2:
+                    click(app.boss_btn_finish)
+                elif frame == 3:
+                    assert app.game_state == "LOGIN"
+                    assert app.login_show_all_players
+                    app.game_state = "FINAL_STATS"
+                    click(app.stats_finish_btn)
+                elif frame == 4:
+                    assert app.game_state == "LOGIN"
+                    assert app.login_show_all_players
+                    pygame.event.post(pygame.event.Event(pygame.QUIT))
+            pygame.display.flip = flip
+            import main
+        """)
+        environment = os.environ.copy()
+        environment.update({
+            "SDL_VIDEODRIVER": "dummy",
+            "SDL_AUDIODRIVER": "dummy",
+            "PYGAME_HIDE_SUPPORT_PROMPT": "1",
+            "PYTHONPATH": str(PROJECT_ROOT),
+        })
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = subprocess.run(
+                [sys.executable, "-c", child_code], cwd=temp_dir,
+                env=environment, capture_output=True, text=True,
+                timeout=20, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,27 @@ class ArtifactTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_sword_is_drawn_only_when_requested(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.run_app("""
+                import asyncio
+                asyncio.run = lambda coroutine: coroutine.close()
+                import main
+                import pygame
+
+                hero = pygame.Surface((120, 120))
+                hero.fill((0, 0, 0))
+                main.draw_steve_animated(hero, 50, 60, "foot", False)
+                assert hero.get_at((76, 34))[:3] == (0, 0, 0)
+
+                hero.fill((0, 0, 0))
+                main.draw_steve_animated(hero, 50, 60, "foot", False, show_sword=True)
+                assert hero.get_at((76, 34))[:3] == (50, 220, 210)
+
+                player = main.get_player("Без меча", remember_player=False)
+                assert not main.has_active_artifact(player, "sharp_sword")
+            """, temp_dir)
+
     def test_legacy_ownership_migrates_and_encounters_charge_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             save_path = Path(temp_dir) / "mc_math_save.json"
@@ -93,18 +114,28 @@ class ArtifactTests(unittest.TestCase):
                 main.grant_librarian_reward(p)
                 assert p["sage_artifact"] in ("sharp_sword", "hint_book")
                 assert p["artifact_charges"][p["sage_artifact"]] == 2
+                artifact_id, name, description, status = main.librarian_reward_card(p)
+                assert artifact_id == p["sage_artifact"]
+                assert name == main.ARTIFACTS[artifact_id]["name"]
+                assert description == main.ARTIFACTS[artifact_id]["desc"]
+                assert "2/" in status
                 main.grant_librarian_reward(p)
                 assert set(p["artifacts"]) == {"sharp_sword", "hint_book"}
                 for item in p["artifacts"]:
                     p["artifact_charges"][item] = main.ARTIFACTS[item]["max_charges"] - 1
                 main.grant_librarian_reward(p)
                 assert p["sage_artifact"].startswith("repair:")
+                artifact_id, _, description, status = main.librarian_reward_card(p)
+                assert artifact_id in ("sharp_sword", "hint_book")
+                assert description == main.ARTIFACTS[artifact_id]["desc"]
+                assert "Восстановлен 1 заряд" in status
                 for item in p["artifacts"]:
                     p["artifact_charges"][item] = main.ARTIFACTS[item]["max_charges"]
                 before = p["emeralds"]
                 main.grant_librarian_reward(p)
                 assert p["sage_artifact"] == "emeralds"
                 assert p["emeralds"] == before + 10
+                assert main.librarian_reward_card(p)[1] == "10 изумрудов"
             """, temp_dir)
 
     def test_shop_repairs_and_toggles_owned_artifact(self):

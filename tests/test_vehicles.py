@@ -40,7 +40,6 @@ class VehicleShopTests(unittest.TestCase):
                     app.save_data({"Kid": player})
                     app.player_data = player
                     app.current_world_idx = 0
-                    app.workbench_preview_vehicle_idx = 0
                     app.workbench_tab = "VEHICLES"
                     app.game_state = "WORKBENCH"
                     original_draw = app.draw_steve_animated
@@ -49,7 +48,7 @@ class VehicleShopTests(unittest.TestCase):
                         return original_draw(*args, **kwargs)
                     app.draw_steve_animated = record_draw
                 elif frame == 2:
-                    assert drawn_vehicles == []
+                    assert drawn_vehicles[-1] == ("WORKBENCH", "foot")
                     click(app.get_shop_row_rects(0, len(app.WORLDS))[2])
                 elif frame == 3:
                     player = app.load_data()["Kid"]
