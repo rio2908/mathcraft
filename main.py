@@ -23,6 +23,7 @@ from game_content import (
     WORLDS,
 )
 from game_storage import get_last_player, load_data, save_data, set_last_player
+from game_backup import AndroidBackupPicker
 from game_music import synthesize_biome_tune
 from game_tasks import (
     advance_heat_rune,
@@ -1462,6 +1463,8 @@ player_name = preferred_player_name or next(iter(saved_profiles), "")
 player_data = get_player(player_name, apply_daily_bonus=False, remember_player=False) if player_name else {}
 sound_enabled = player_data.get("sound_enabled", True)
 game_state = "LOGIN" if saved_profiles else "REGISTER"
+backup_picker = AndroidBackupPicker()
+backup_return_state = game_state
 
 task_num = player_data.get("task_num", 1) if player_data else 1
 marathon_elapsed_seconds = float(player_data.get("marathon_elapsed_seconds", 0)) if player_data else 0.0
@@ -1957,6 +1960,10 @@ login_next_btn = pygame.Rect(720, 213, 75, 30)
 help_login_btn = pygame.Rect(WIDTH // 2 - 220, 500, 210, 42)
 mob_catalog_btn = pygame.Rect(WIDTH // 2 + 10, 500, 210, 42)
 exit_login_btn = pygame.Rect(WIDTH // 2 - 70, 555, 140, 34)
+backup_entry_btn = pygame.Rect(805, 25, 170, 38)
+backup_back_btn = pygame.Rect(35, 25, 150, 40)
+backup_export_btn = pygame.Rect(235, 280, 250, 55)
+backup_import_btn = pygame.Rect(515, 280, 250, 55)
 register_back_btn = pygame.Rect(35, 25, 140, 38)
 register_name_rect = pygame.Rect(260, 180, 480, 50)
 register_boy_rect = pygame.Rect(300, 275, 170, 105)
@@ -2112,11 +2119,24 @@ async def main():
     global preferred_player_name, login_show_all_players, login_page
     global registration_name, registration_avatar, registration_difficulty
     global registration_error, registration_name_active
+    global saved_profiles, known_profiles, last_player_name, backup_return_state
 
     running = True
     workbench_notice = ""
+    backup_notice = ""
 
     while running:
+        backup_result = backup_picker.poll()
+        if backup_result is not None:
+            backup_notice, restored = backup_result
+            if restored:
+                saved_profiles = load_data()
+                known_profiles = list(saved_profiles)
+                last_player_name = get_last_player()
+                preferred_player_name = last_player_name if last_player_name in saved_profiles else None
+                login_show_all_players = preferred_player_name is None
+                login_page = 0
+                backup_return_state = "LOGIN"
         anim_tick += 1
         mouse_pos = pygame.mouse.get_pos()
         login_profiles = get_login_profiles()
@@ -2140,6 +2160,12 @@ async def main():
 
             elif game_state == "REGISTER":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if backup_entry_btn.collidepoint(mouse_pos):
+                        pygame.key.stop_text_input()
+                        registration_name_active = False
+                        backup_return_state = "REGISTER"
+                        game_state = "BACKUP"
+                        continue
                     if register_back_btn.collidepoint(mouse_pos):
                         pygame.key.stop_text_input()
                         registration_name_active = False
@@ -2186,6 +2212,10 @@ async def main():
                 selected_for_play = None
                 selected_for_stats = None
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    if backup_entry_btn.collidepoint(mouse_pos):
+                        backup_return_state = "LOGIN"
+                        game_state = "BACKUP"
+                        continue
                     if not login_show_all_players and change_player_btn.collidepoint(mouse_pos):
                         login_show_all_players = True
                         login_page = 0
@@ -2236,6 +2266,32 @@ async def main():
                     history_page = 0
                     history_selected_index = None
                     game_state = "HISTORY"
+            elif game_state == "BACKUP":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if backup_back_btn.collidepoint(mouse_pos):
+                        game_state = backup_return_state
+                        if game_state == "REGISTER":
+                            registration_name_active = True
+                            pygame.key.start_text_input()
+                            pygame.key.set_text_input_rect(register_name_rect)
+                    elif backup_export_btn.collidepoint(mouse_pos):
+                        if "ANDROID_ARGUMENT" not in os.environ:
+                            backup_notice = "Копирование доступно в Android-приложении."
+                        else:
+                            try:
+                                backup_picker.start(export=True)
+                                backup_notice = "Выберите место для копии вне приложения."
+                            except Exception as error:
+                                backup_notice = f"Не удалось открыть выбор файла: {error}"
+                    elif backup_import_btn.collidepoint(mouse_pos):
+                        if "ANDROID_ARGUMENT" not in os.environ:
+                            backup_notice = "Восстановление доступно в Android-приложении."
+                        else:
+                            try:
+                                backup_picker.start(export=False)
+                                backup_notice = "Выберите ранее сохранённую копию."
+                            except Exception as error:
+                                backup_notice = f"Не удалось открыть выбор файла: {error}"
 
             elif game_state == "HELP":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -3069,6 +3125,7 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BLACK, card, 3)
             back_label = "< К игрокам" if known_profiles else "Выход"
             draw_mc_button(screen, register_back_btn, back_label, register_back_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            draw_mc_button(screen, backup_entry_btn, "Копия данных", backup_entry_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
             heading = FONT_TITLE.render("СОЗДАТЬ ИГРОКА", True, DARK_TEXT)
             screen.blit(heading, (WIDTH // 2 - heading.get_width() // 2, 90))
             name_label = FONT_MED.render("Как тебя зовут?", True, DARK_TEXT)
@@ -3184,6 +3241,37 @@ async def main():
                 exit_login_btn.collidepoint(mouse_pos),
                 font_pref=FONT_SMALL, custom_bg=(155, 55, 55)
             )
+            draw_mc_button(screen, backup_entry_btn, "Копия данных", backup_entry_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+
+        elif game_state == "BACKUP":
+            screen.fill((60, 100, 125))
+            card = pygame.Rect(110, 75, 780, 455)
+            pygame.draw.rect(screen, MC_GUI_BG, card)
+            pygame.draw.rect(screen, MC_GUI_BLACK, card, 3)
+            draw_mc_button(screen, backup_back_btn, "< Назад", backup_back_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            title = FONT_TITLE.render("РЕЗЕРВНАЯ КОПИЯ", True, DARK_TEXT)
+            screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 115))
+            for index, line in enumerate((
+                "Сохраните копию до удаления игры.",
+                "Выберите папку Загрузки или облачный диск.",
+                "После установки нажмите «Восстановить».",
+                "Копия содержит всех игроков, покупки и историю игр.",
+            )):
+                rendered = FONT_MED.render(line, True, DARK_TEXT)
+                screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 165 + index * 27))
+            draw_mc_button(screen, backup_export_btn, "Сохранить копию", backup_export_btn.collidepoint(mouse_pos),
+                           font_pref=FONT_MED, custom_bg=(55, 140, 75))
+            draw_mc_button(screen, backup_import_btn, "Восстановить", backup_import_btn.collidepoint(mouse_pos),
+                           font_pref=FONT_MED, custom_bg=(75, 105, 155))
+            note = "Существующие игроки не перезаписываются при восстановлении."
+            rendered = FONT_SMALL.render(note, True, (70, 80, 90))
+            screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 370))
+            if backup_notice:
+                displayed = backup_notice
+                while FONT_SMALL.size(displayed)[0] > 735 and len(displayed) > 1:
+                    displayed = displayed[:-2] + "…"
+                rendered = FONT_SMALL.render(displayed, True, (45, 75, 115))
+                screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 425))
 
         elif game_state == "HELP":
             screen.fill((45, 55, 75))

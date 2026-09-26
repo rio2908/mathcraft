@@ -9,7 +9,7 @@ source.exclude_dirs = .git,.github,.venv,.web-test-venv,build,bin,.buildozer
 source.exclude_patterns = __pycache__/*,*.pyc
 
 version = 1.0
-requirements = python3==3.10.11,hostpython3==3.10.11,pygame
+requirements = python3==3.10.11,hostpython3==3.10.11,pygame,pyjnius
 
 orientation = landscape
 fullscreen = 1

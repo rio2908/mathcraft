@@ -46,8 +46,8 @@ $env:PYTHONUTF8 = "1"
 ## 4. Обязательные статические проверки
 
 ```powershell
-.\.venv\Scripts\python.exe -m py_compile main.py game_content.py game_tasks.py game_storage.py game_music.py
-.\.venv\Scripts\python.exe -m pyflakes main.py game_content.py game_tasks.py game_storage.py game_music.py
+.\.venv\Scripts\python.exe -m py_compile main.py game_content.py game_tasks.py game_storage.py game_backup.py game_music.py
+.\.venv\Scripts\python.exe -m pyflakes main.py game_content.py game_tasks.py game_storage.py game_backup.py game_music.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 git diff --check
 ```
@@ -179,6 +179,8 @@ workflow `.github/workflows/android-rustore.yml` после настройки �
 - bootstrap: SDL2;
 - ориентация: landscape;
 - backup разрешён (`android.allow_backup = True`).
+- для выбора файла резервной копии используется `pyjnius` и системный
+  Android Storage Access Framework, без разрешения на весь накопитель.
 
 ### Важное ограничение подписи
 
@@ -200,8 +202,14 @@ Workflow сейчас собирает debug APK. На новом GitHub runner 
 5. собирать `buildozer android release` и проверять подпись APK;
 6. никогда не терять и не заменять этот ключ для существующего package id.
 
-До настройки постоянной подписи не обещайте пользователю сохранение данных при
-переустановке.
+При обновлении поверх приложения используйте постоянную подпись. Перед
+удалением приложения откройте «Копия данных» и сохраните файл в Загрузки или
+на облачный диск; после установки на экране регистрации нажмите
+«Копия данных» → «Восстановить». Копия включает все профили, прогресс,
+покупки и историю. Восстановление не перезаписывает одноимённые профили.
+Системный Android Backup разрешён, но его восстановление зависит от настроек
+телефона и не гарантировано. Копия, сохранённая только в Загрузки, не
+защищает от потери самого телефона.
 
 ## 9. Сохранения в разных окружениях
 
@@ -209,7 +217,7 @@ Workflow сейчас собирает debug APK. На новом GitHub runner 
 |---|---|---|
 | Windows | текущий рабочий каталог | ручное удаление файлов |
 | Web | BrowserFS/локальные данные сайта | очистка данных сайта, другой домен/браузер |
-| Android | внутреннее хранилище приложения | uninstall или очистка данных приложения |
+| Android | внутреннее хранилище приложения; ручная копия через выбор файла | uninstall удаляет внутренние данные, но не выбранную внешнюю копию |
 
 Файлы сохранения исключены из Pygbag через `pygbag.ini`. Они не должны попадать
 в Git.

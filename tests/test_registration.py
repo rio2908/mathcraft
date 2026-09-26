@@ -33,6 +33,48 @@ class RegistrationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_backup_screen_opens_before_any_player_exists(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.run_game("""
+                import sys
+                import threading
+                import time
+                import pygame
+
+                def check_backup():
+                    deadline = time.time() + 12
+                    while time.time() < deadline:
+                        app = sys.modules.get("main")
+                        if app and hasattr(app, "backup_entry_btn") and app.game_state == "REGISTER":
+                            pygame.event.post(pygame.event.Event(
+                                pygame.MOUSEBUTTONDOWN, pos=app.backup_entry_btn.center, button=1))
+                            break
+                        time.sleep(0.02)
+                    else:
+                        raise RuntimeError("Registration screen did not open")
+                    while time.time() < deadline:
+                        if app.game_state == "BACKUP":
+                            pygame.event.post(pygame.event.Event(
+                                pygame.MOUSEBUTTONDOWN, pos=app.backup_back_btn.center, button=1))
+                            break
+                        time.sleep(0.02)
+                    else:
+                        raise RuntimeError("Backup screen did not open")
+                    while time.time() < deadline:
+                        if app.game_state == "REGISTER":
+                            pygame.event.post(pygame.event.Event(pygame.QUIT))
+                            return
+                        time.sleep(0.02)
+                    raise RuntimeError("Backup screen did not close")
+
+                worker = threading.Thread(target=check_backup, daemon=True)
+                worker.start()
+                import main
+                worker.join(timeout=1)
+                if worker.is_alive():
+                    raise RuntimeError("Backup worker did not finish")
+            """, temp_dir)
+
     def test_create_avatar_profile_and_show_it_on_next_start(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             self.run_game("""
