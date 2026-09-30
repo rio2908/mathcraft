@@ -22,6 +22,13 @@ class ContentInvariantTests(unittest.TestCase):
         mob_ids = {mob_id for pool in MOB_POOLS for mob_id, _ in pool}
         self.assertEqual(mob_ids, set(MOB_ABILITIES))
 
+    def test_all_nether_mobs_use_mixed_examples(self):
+        self.assertEqual(
+            {MOB_ABILITIES[mob_id]["kind"] for mob_id, _ in MOB_POOLS[3]},
+            {"nether_mixed"},
+        )
+        self.assertEqual(MOB_ABILITIES["magma_cube"]["swap_seconds"], 3.0)
+
     def test_artifact_charge_balance(self):
         for info in ARTIFACTS.values():
             self.assertGreater(info["max_charges"], 0)

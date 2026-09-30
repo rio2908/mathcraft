@@ -85,6 +85,83 @@ class VehicleShopTests(unittest.TestCase):
             saved = json.loads((Path(temp_dir) / "mc_math_save.json").read_text(encoding="utf-8"))
             self.assertIn("pig", saved["Kid"]["owned_vehicles"])
 
+    def test_unicorn_purchase_switching_and_save_migration(self):
+        child_code = textwrap.dedent("""
+            import sys
+            import pygame
+
+            original_flip = pygame.display.flip
+            frame = 0
+
+            def click(rect):
+                pygame.event.post(pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN, button=1, pos=rect.center
+                ))
+
+            def flip():
+                global frame
+                original_flip()
+                frame += 1
+                app = sys.modules["main"]
+                if frame == 1:
+                    p = app.get_player("Kid", apply_daily_bonus=False, remember_player=False)
+                    assert not p["unicorn_equipped"]
+                    p.pop("unicorn_equipped")
+                    p["emeralds"] = app.UNICORN["cost"] + 100
+                    p["owned_vehicles"] = ["pig"]
+                    app.save_data({"Kid": p})
+                    p = app.get_player("Kid", apply_daily_bonus=False, remember_player=False)
+                    assert not p["unicorn_equipped"]
+                    app.player_name = "Kid"
+                    app.player_data = p
+                    app.current_world_idx = 0
+                    app.workbench_tab = "VEHICLES"
+                    app.game_state = "WORKBENCH"
+                    click(app.get_shop_row_rects(len(app.WORLDS), len(app.WORLDS) + 1)[2])
+                elif frame == 2:
+                    p = app.load_data()["Kid"]
+                    assert p["emeralds"] == 100
+                    assert p["owned_vehicles"].count("unicorn") == 1
+                    assert p["unicorn_equipped"]
+                    for world in app.WORLDS:
+                        assert app.get_active_vehicle(p, world) == ("unicorn", True)
+                    click(app.get_vehicle_toggle_rect(len(app.WORLDS)))
+                elif frame == 3:
+                    p = app.load_data()["Kid"]
+                    assert not p["unicorn_equipped"]
+                    assert app.get_active_vehicle(p, app.WORLDS[0]) == ("pig", False)
+                    assert app.get_active_vehicle(p, app.WORLDS[1]) == ("foot", False)
+                    click(app.get_vehicle_toggle_rect(len(app.WORLDS)))
+                elif frame == 4:
+                    p = app.load_data()["Kid"]
+                    assert p["unicorn_equipped"]
+                    click(app.get_vehicle_toggle_rect(0))
+                elif frame == 5:
+                    p = app.load_data()["Kid"]
+                    assert not p["unicorn_equipped"]
+                    assert app.get_active_vehicle(p, app.WORLDS[0]) == ("pig", False)
+                    p["hero_frog"] = True
+                    assert app.get_active_vehicle(p, app.WORLDS[0]) == ("foot", False)
+                    pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+            pygame.display.flip = flip
+            import main
+        """)
+        environment = os.environ.copy()
+        environment.update({
+            "SDL_VIDEODRIVER": "dummy",
+            "SDL_AUDIODRIVER": "dummy",
+            "PYGAME_HIDE_SUPPORT_PROMPT": "1",
+            "PYTHONPATH": str(PROJECT_ROOT),
+        })
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = subprocess.run(
+                [sys.executable, "-c", child_code], cwd=temp_dir,
+                env=environment, capture_output=True, text=True, timeout=20,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

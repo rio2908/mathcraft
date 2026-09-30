@@ -20,6 +20,7 @@ from game_content import (
     POTIONS,
     STEPS_PER_WORLD,
     TOTAL_QUESTS,
+    UNICORN,
     WORLDS,
 )
 from game_storage import get_last_player, load_data, save_data, set_last_player
@@ -38,6 +39,8 @@ from game_tasks import (
     is_final_boss_position,
     make_math_task as generate_math_task,
     make_review_task,
+    make_nether_task,
+    rotate_visible_choices,
     pick_chest_key_task,
     pick_logic_task_with_history,
 )
@@ -199,6 +202,7 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             "emeralds": 10, "streak": 1, "last_date": today_str,
             "task_num": 1, "helmet": "none", "unlocked_helmets": ["none"],
             "owned_vehicles": [], "upgraded_vehicles": [], "disabled_vehicles": [],
+            "unicorn_equipped": False,
             "artifacts": [], "disabled_artifacts": [], "artifact_charges": {},
             "sharp_sword_task": None, "boss_artifact_choice": None, "totems": 1,
             "luck_potions": 0, "luck_timer": 0,
@@ -216,6 +220,8 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             "chest_pending_next_marathon": False, "chest_challenge": None,
             "chest_seen_questions": {"easy": [], "hard": []},
             "hero_hearts": 3, "food_apples": 0, "food_bread": 0,
+            "hero_frog": False, "web_seconds_left": 0.0,
+            "vampire_bat_active": False, "vampire_bat_target_world": None,
             "sage_task": create_sage_task(new_route),
             "sage_completed": False,
             "sage_artifact": None,
@@ -254,6 +260,9 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
         if "owned_vehicles" not in p:
             p["owned_vehicles"] = list(p["upgraded_vehicles"])
         if "disabled_vehicles" not in p: p["disabled_vehicles"] = []
+        p.setdefault("unicorn_equipped", False)
+        if UNICORN["id"] not in p["owned_vehicles"]:
+            p["unicorn_equipped"] = False
         if "artifacts" not in p: p["artifacts"] = []
         if "disabled_artifacts" not in p: p["disabled_artifacts"] = []
         charges = p.setdefault("artifact_charges", {})
@@ -311,6 +320,12 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             if not isinstance(p["chest_seen_questions"].get(mode), list):
                 p["chest_seen_questions"][mode] = []
         p.setdefault("hero_hearts", 3)
+        p.setdefault("hero_frog", False)
+        p.setdefault("web_seconds_left", 0.0)
+        p.setdefault("vampire_bat_active", False)
+        p.setdefault("vampire_bat_target_world", None)
+        if p["hero_frog"]:
+            p["hero_hearts"] = min(1, p["hero_hearts"])
         p.setdefault("food_apples", 0)
         p.setdefault("food_bread", 0)
         if "sage_task" not in p:
@@ -326,6 +341,9 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
         if "pet" not in p: p["pet"] = "none"
         if "pet_errors" not in p: p["pet_errors"] = 0
         if "pets_lost" not in p: p["pets_lost"] = 0
+        if p["pet"] == "wolf" and not p["hero_frog"] and p["vampire_bat_active"]:
+            p["vampire_bat_active"] = False
+            p["vampire_bat_target_world"] = None
         if "marathon_elapsed_seconds" not in p: p["marathon_elapsed_seconds"] = 0
         if "defeated_mob_worlds" not in p: p["defeated_mob_worlds"] = []
         if "adaptive_tasks" not in p: p["adaptive_tasks"] = {}
@@ -343,6 +361,8 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
 
 def use_helmet_protection(profile):
     """Consume one durability point and shield the boss-health penalty."""
+    if profile.get("hero_frog", False):
+        return None
     helmet_id = profile.get("helmet", "none")
     helmet_info = HELMETS.get(helmet_id, HELMETS["none"])
     if helmet_id == "none" or helmet_info.get("max_durability", 0) <= 0:
@@ -370,6 +390,8 @@ def use_helmet_protection(profile):
     }
 
 def register_pet_error(profile):
+    if profile.get("hero_frog", False):
+        return None
     pet_id = profile.get("pet", "none")
     if pet_id == "none":
         return None
@@ -383,10 +405,57 @@ def register_pet_error(profile):
     return {"ran_away": False, "pet_name": PETS.get(pet_id, {}).get("name", "Питомец"), "errors": errors}
 
 
+def steal_emeralds(profile, amount):
+    """Take at most the available emeralds; never make the balance negative."""
+    available = max(0, int(profile.get("emeralds", 0)))
+    taken = min(available, amount)
+    profile["emeralds"] = available - taken
+    return taken
+
+
+def wolf_repels_vampire_bat(profile):
+    """An active wolf prevents the bat from following or chases it away."""
+    if profile.get("pet", "none") != "wolf" or profile.get("hero_frog", False):
+        return False
+    if not profile.get("vampire_bat_active", False):
+        return False
+    profile["vampire_bat_active"] = False
+    profile["vampire_bat_target_world"] = None
+    return True
+
+
+def trigger_vampire_bat(profile):
+    """Consume the following bat on the first wrong answer, even at zero emeralds."""
+    if not profile.get("vampire_bat_active", False):
+        return None
+    profile["vampire_bat_active"] = False
+    profile["vampire_bat_target_world"] = None
+    return steal_emeralds(profile, MOB_ABILITIES["vampire"]["steal_amount"])
+
+
+def release_vampire_bat_after_mob(profile, world_idx):
+    """Let an untriggered bat leave after the next guardian is defeated."""
+    if (not profile.get("vampire_bat_active", False)
+            or profile.get("vampire_bat_target_world") != world_idx):
+        return False
+    profile["vampire_bat_active"] = False
+    profile["vampire_bat_target_world"] = None
+    return True
+
+
+def vampire_steal_text(taken, bat=False):
+    thief = "Летучая мышь" if bat else "Вампир"
+    return (f"{thief} забрал {taken} изумрудов!" if taken
+            else f"{thief} не нашёл изумрудов и улетел!" if bat
+            else "У тебя нет изумрудов для Вампира.")
+
+
 def has_active_artifact(profile, artifact_id):
     if not profile:
         return False
     return (
+        not profile.get("hero_frog", False)
+        and
         artifact_id in profile.get("artifacts", [])
         and artifact_id not in profile.get("disabled_artifacts", [])
         and profile.get("artifact_charges", {}).get(
@@ -641,6 +710,14 @@ def draw_item_icon(surf, item_type, cx, cy):
         pygame.draw.rect(surf, (25, 25, 28), (cx - 12, cy - 10, 24, 20))
         pygame.draw.rect(surf, (220, 60, 255), (cx - 8, cy - 6, 5, 4))
         pygame.draw.rect(surf, (220, 60, 255), (cx + 3, cy - 6, 5, 4))
+    elif item_type == "veh_unicorn":
+        pygame.draw.rect(surf, (75, 45, 95), (cx - 15, cy - 10, 30, 25))
+        pygame.draw.rect(surf, (245, 240, 255), (cx - 13, cy - 8, 26, 21))
+        pygame.draw.polygon(surf, (255, 225, 75), [(cx + 3, cy - 9), (cx + 10, cy - 23), (cx + 11, cy - 8)])
+        for stripe, color in enumerate(((240, 65, 105), (255, 165, 60), (245, 225, 80),
+                                        (65, 205, 120), (75, 165, 245), (175, 100, 225))):
+            pygame.draw.rect(surf, color, (cx - 14, cy - 8 + stripe * 3, 5, 3))
+        pygame.draw.rect(surf, (55, 45, 75), (cx + 5, cy - 1, 4, 4))
 
     elif item_type == "sharp_sword":
         pygame.draw.line(surf, (50, 225, 220), (cx + 12, cy - 12), (cx - 2, cy + 2), 5)
@@ -707,8 +784,21 @@ def get_shop_row_rects(index, total_rows=4):
 
 
 def get_vehicle_toggle_rect(index):
-    row_rect, _, _ = get_shop_row_rects(index, len(WORLDS))
+    row_rect, _, _ = get_shop_row_rects(index, len(WORLDS) + 1)
     return pygame.Rect(row_rect.right - 250, row_rect.y + 14, 115, 34)
+
+
+def get_active_vehicle(profile, world_info):
+    """Select the mounted vehicle; the unicorn works in every biome."""
+    if not profile or profile.get("hero_frog", False):
+        return "foot", False
+    owned = profile.get("owned_vehicles", [])
+    if profile.get("unicorn_equipped", False) and UNICORN["id"] in owned:
+        return UNICORN["id"], True
+    vehicle_id = world_info["vehicle_type"]
+    if vehicle_id in owned and vehicle_id not in profile.get("disabled_vehicles", []):
+        return vehicle_id, vehicle_id in profile.get("upgraded_vehicles", [])
+    return "foot", False
 
 
 def get_food_use_rect(index):
@@ -1055,6 +1145,37 @@ def draw_world_background(surf, world_idx, world, tick, ground_y):
 
 
 
+def draw_vampire_bat(surf, cx, cy, anim_tick=0):
+    """Small animated bat that follows the hero after a vampire fight."""
+    flap = int(math.sin(anim_tick * 0.24) * 8)
+    hover = int(math.sin(anim_tick * 0.13) * 3)
+    cy += hover
+    edge = (35, 20, 45)
+    wing = (110, 75, 140)
+    pygame.draw.polygon(surf, edge, [
+        (cx - 5, cy), (cx - 20, cy - 10 - flap), (cx - 32, cy - 7 - flap),
+        (cx - 27, cy + 8), (cx - 16, cy + 2),
+    ])
+    pygame.draw.polygon(surf, wing, [
+        (cx - 7, cy + 1), (cx - 22, cy - 7 - flap), (cx - 29, cy - 4 - flap),
+        (cx - 25, cy + 5), (cx - 17, cy),
+    ])
+    pygame.draw.polygon(surf, edge, [
+        (cx + 5, cy), (cx + 20, cy - 10 - flap), (cx + 32, cy - 7 - flap),
+        (cx + 27, cy + 8), (cx + 16, cy + 2),
+    ])
+    pygame.draw.polygon(surf, wing, [
+        (cx + 7, cy + 1), (cx + 22, cy - 7 - flap), (cx + 29, cy - 4 - flap),
+        (cx + 25, cy + 5), (cx + 17, cy),
+    ])
+    pygame.draw.rect(surf, edge, (cx - 9, cy - 7, 18, 19))
+    pygame.draw.rect(surf, (155, 120, 175), (cx - 6, cy - 5, 12, 12))
+    pygame.draw.polygon(surf, edge, [(cx - 8, cy - 5), (cx - 8, cy - 15), (cx - 2, cy - 7)])
+    pygame.draw.polygon(surf, edge, [(cx + 8, cy - 5), (cx + 8, cy - 15), (cx + 2, cy - 7)])
+    pygame.draw.rect(surf, (255, 65, 80), (cx - 5, cy, 3, 3))
+    pygame.draw.rect(surf, (255, 65, 80), (cx + 2, cy, 3, 3))
+
+
 def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
     bob = int(math.sin(anim_tick * 0.15) * 3)
     cy += bob
@@ -1162,6 +1283,27 @@ def draw_mob(surf, cx, cy, mob_id, anim_tick=0, flash_red=False):
         pygame.draw.polygon(surf, (50, 30, 55), [(cx - 13, cy - 28), (cx + 13, cy - 28), (cx, cy - 49)])
         pygame.draw.rect(surf, (45, 25, 45), (cx - 3, cy - 14, 6, 12))
         pygame.draw.rect(surf, w_col, (cx - 15, cy + 4, 30, 38))
+    elif mob_id == "vampire":
+        cape = (235, 90, 100) if flash_red else (80, 35, 95)
+        skin = (240, 215, 205)
+        pygame.draw.polygon(surf, (35, 20, 45), [
+            (cx - 18, cy), (cx + 18, cy), (cx + 28, cy + 42), (cx - 28, cy + 42),
+        ])
+        pygame.draw.polygon(surf, cape, [
+            (cx - 15, cy + 3), (cx + 15, cy + 3), (cx + 23, cy + 39), (cx - 23, cy + 39),
+        ])
+        pygame.draw.rect(surf, (45, 30, 55), (cx - 12, cy - 1, 24, 31))
+        pygame.draw.rect(surf, skin, (cx - 15, cy - 29, 30, 29))
+        pygame.draw.polygon(surf, (35, 20, 45), [
+            (cx - 17, cy - 30), (cx + 17, cy - 30), (cx + 13, cy - 15),
+            (cx + 4, cy - 22), (cx - 4, cy - 17), (cx - 13, cy - 20),
+        ])
+        pygame.draw.rect(surf, (175, 25, 55), (cx - 10, cy - 14, 6, 5))
+        pygame.draw.rect(surf, (175, 25, 55), (cx + 4, cy - 14, 6, 5))
+        pygame.draw.rect(surf, (255, 255, 245), (cx - 5, cy - 5, 3, 7))
+        pygame.draw.rect(surf, (255, 255, 245), (cx + 2, cy - 5, 3, 7))
+        pygame.draw.rect(surf, (35, 20, 45), (cx - 13, cy + 30, 9, 13))
+        pygame.draw.rect(surf, (35, 20, 45), (cx + 4, cy + 30, 9, 13))
     elif mob_id == "snow_golem":
         snow_col = (255, 140, 140) if flash_red else (105, 155, 185)
         pygame.draw.circle(surf, snow_col, (cx, cy + 17), 22)
@@ -1388,6 +1530,29 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         else:
             pygame.draw.polygon(surf, (70, 70, 85), [(cx - 6, cy + 4), (cx - 26, cy + 24 + wing_flap//2), (cx - 10, cy + 26)])
             pygame.draw.polygon(surf, (70, 70, 85), [(cx + 6, cy + 4), (cx + 26, cy + 24 + wing_flap//2), (cx + 10, cy + 26)])
+    elif v_type == "unicorn":
+        outline = (85, 60, 110)
+        coat = (245, 240, 255)
+        hoof = (95, 80, 125)
+        pygame.draw.rect(surf, outline, (cx - 25, cy + 5, 49, 28))
+        pygame.draw.rect(surf, coat, (cx - 23, cy + 7, 45, 24))
+        for stripe, color in enumerate(((245, 85, 130), (255, 170, 70), (245, 225, 85),
+                                        (75, 205, 125), (80, 165, 245), (180, 105, 230))):
+            pygame.draw.line(surf, color, (cx - 24 - stripe * 2, cy + 8),
+                             (cx - 29 - stripe * 2, cy + 22 + stripe), 3)
+            pygame.draw.rect(surf, color, (cx + 11 - stripe, cy - 11 + stripe * 4, 7, 4))
+        pygame.draw.rect(surf, outline, (cx + 12, cy - 17, 16, 27))
+        pygame.draw.rect(surf, coat, (cx + 14, cy - 15, 12, 25))
+        pygame.draw.rect(surf, outline, (cx + 21, cy - 23, 22, 16))
+        pygame.draw.rect(surf, coat, (cx + 23, cy - 21, 18, 12))
+        pygame.draw.polygon(surf, (255, 220, 75), [
+            (cx + 25, cy - 22), (cx + 31, cy - 37), (cx + 34, cy - 22),
+        ])
+        pygame.draw.rect(surf, (55, 45, 85), (cx + 35, cy - 17, 4, 4))
+        for leg_x, swing in ((cx - 16, leg_swing), (cx + 10, -leg_swing)):
+            pygame.draw.rect(surf, outline, (leg_x + swing, cy + 29, 9, 14))
+            pygame.draw.rect(surf, coat, (leg_x + swing + 1, cy + 29, 7, 10))
+            pygame.draw.rect(surf, hoof, (leg_x + swing, cy + 39, 9, 4))
 
     sx, sy = cx, cy - 14 + int(walk_cycle * 1.5)
     if v_type == "foot":
@@ -1436,6 +1601,31 @@ def draw_steve_animated(surf, cx, cy, v_type, is_upgraded, helmet="none", anim_t
         pygame.draw.rect(surf, h_col, (sx - 13, sy - 16, 6, 18))
         pygame.draw.rect(surf, h_col, (sx + 7, sy - 16, 6, 18))
         pygame.draw.rect(surf, (30, 30, 30), (sx - 13, sy - 16, 26, 18), 1)
+
+
+def draw_player_character(surf, cx, cy, profile, travel_type, is_upgraded,
+                          anim_tick=0, is_moving=False, squash=1.0, sword_swing=0,
+                          show_sword=False):
+    if profile.get("hero_frog", False):
+        draw_mob(surf, cx, cy - 10, "frog", anim_tick=anim_tick)
+        return
+    draw_steve_animated(
+        surf, cx, cy, travel_type, is_upgraded,
+        helmet=profile.get("helmet", "none"), anim_tick=anim_tick,
+        is_moving=is_moving, squash=squash, sword_swing=sword_swing,
+        avatar=profile.get("avatar", "girl"), show_sword=show_sword,
+    )
+
+
+def draw_cave_web(surf, cx, cy):
+    """Visible pixel-web over a trapped hero."""
+    color = (215, 245, 255)
+    pygame.draw.rect(surf, (75, 115, 135), (cx - 53, cy - 50, 106, 103), 2)
+    for offset in (-36, -18, 0, 18, 36):
+        pygame.draw.line(surf, color, (cx - 51, cy + offset), (cx + 51, cy + offset), 2)
+        pygame.draw.line(surf, color, (cx + offset, cy - 48), (cx + offset, cy + 51), 2)
+    pygame.draw.line(surf, color, (cx - 51, cy - 48), (cx + 51, cy + 51), 2)
+    pygame.draw.line(surf, color, (cx + 51, cy - 48), (cx - 51, cy + 51), 2)
 
 # ==================== ПЕРЕМЕННЫЕ И СОСТОЯНИЕ ====================
 TIMED_GAME_STATES = {"GAME", "MOB_BATTLE", "SAGE_CHALLENGE", "BOSS_BATTLE", "CHEST_LOCK"}
@@ -1503,6 +1693,9 @@ mob_hint_hidden = -1
 mob_regen_elapsed = 0.0
 mob_regen_started = False
 mob_regen_flash_timer = 0
+mob_web_seconds_left = 0.0
+mob_web_save_accumulator = 0.0
+mob_swap_seconds_left = 0.0
 mob_heat_seconds_left = 0.0
 mob_heat_save_accumulator = 0.0
 
@@ -1597,6 +1790,17 @@ def persist_heat_rune_timer():
         p["heat_rune_regen_elapsed"] = 0.0
     save_data(all_data)
 
+
+def persist_mob_web_timer():
+    if not player_name or game_state != "MOB_BATTLE":
+        return
+    all_data = load_data()
+    p = all_data.get(player_name.strip())
+    if p is None:
+        return
+    p["web_seconds_left"] = round(max(0.0, mob_web_seconds_left), 2)
+    save_data(all_data)
+
 def get_mob_max_hp():
     mob_id = get_route_world(player_data, current_world_idx).get("mob_id", "creeper")
     ability = MOB_ABILITIES.get(mob_id, {"base_hp": 3})
@@ -1609,6 +1813,8 @@ def make_mob_battle_task(profile, world_idx):
     route_world = get_route_world(profile, world_idx)
     mob_id = route_world.get("mob_id", "creeper")
     ability = {} if profile.get("frog_mob_task") == task_num else MOB_ABILITIES.get(mob_id, {})
+    if world_idx == 3 and ability.get("kind") == "nether_mixed":
+        return make_nether_task(player_name, difficulty=profile.get("difficulty"))
     ops = list(route_world["ops"])
     if ability.get("kind") == "mixed":
         ops = ["+", "-"]
@@ -1632,12 +1838,20 @@ def start_mob_encounter():
     global mob_battle_result_msg, mob_failed_reset, mob_strength_used, mob_defeat_timer
     global mob_regen_elapsed, mob_regen_started, mob_regen_flash_timer, player_data, mob_hint_hidden
     global mob_heat_seconds_left, mob_heat_save_accumulator
+    global mob_web_seconds_left, mob_web_save_accumulator
+    global mob_swap_seconds_left
 
-    game_state = "MOB_BATTLE"
     all_data = load_data()
     p = all_data[player_name.strip()]
     if p.get("sharp_sword_task") != task_num:
         p["sharp_sword_task"] = task_num if use_artifact_charge(p, "sharp_sword") else None
+        save_data(all_data)
+    if p.get("frog_mob_task") == task_num:
+        p["web_seconds_left"] = 0.0
+        p["heat_rune_task"] = None
+        p["heat_rune_seconds_left"] = 0.0
+        p["heat_rune_mob_hp"] = None
+        p["heat_rune_regen_elapsed"] = 0.0
         save_data(all_data)
     player_data = p
     mob_max_hp = get_mob_max_hp()
@@ -1652,6 +1866,16 @@ def start_mob_encounter():
         if player_data.get("heat_rune_task") == task_num else 0.0
     )
     mob_heat_save_accumulator = 0.0
+    mob_web_seconds_left = (
+        max(0.0, float(player_data.get("web_seconds_left", 0.0)))
+        if (get_route_world(player_data, current_world_idx).get("mob_id") == "cave_spider"
+            and player_data.get("frog_mob_task") != task_num) else 0.0
+    )
+    mob_web_save_accumulator = 0.0
+    mob_swap_seconds_left = (
+        0.0 if player_data.get("frog_mob_task") == task_num
+        else MOB_ABILITIES["magma_cube"]["swap_seconds"]
+    )
     mob_hint_hidden = -1
     mob_strength_used = player_data.get("strength_mob_task") == task_num
     if mob_strength_used or player_data.get("frog_mob_task") == task_num:
@@ -1667,6 +1891,7 @@ def start_mob_encounter():
     mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
         player_data, current_world_idx
     )
+    game_state = "MOB_BATTLE"
 
 def start_boss_battle():
     global game_state, boss_streak, boss_max_hp
@@ -1735,6 +1960,8 @@ def finish_biome(profile, world_idx):
 
 def consume_food(profile, kind):
     """Spend one food item only when a heart can be restored."""
+    if profile.get("hero_frog", False):
+        return False
     field, restored = ("food_apples", 1) if kind == "apple" else ("food_bread", 2)
     if profile.get("hero_hearts", 3) >= 3 or profile.get(field, 0) <= 0:
         return False
@@ -1747,12 +1974,26 @@ def take_battle_hit(profile):
     """Lose a heart; a totem saves only the last heart."""
     profile["biome_had_error"] = True
     hearts = max(0, profile.get("hero_hearts", 3))
-    if hearts <= 1 and profile.get("totems", 0) > 0:
+    if hearts <= 1 and not profile.get("hero_frog", False) and profile.get("totems", 0) > 0:
         profile["totems"] -= 1
         profile["hero_hearts"] = 1
         return "totem"
     profile["hero_hearts"] = max(0, hearts - 1)
     return "down" if profile["hero_hearts"] == 0 else "hurt"
+
+
+def hero_max_hearts(profile):
+    return 1 if profile.get("hero_frog", False) else 3
+
+
+def apply_witch_curse(profile):
+    """The first witch mistake replaces normal damage with a lasting curse."""
+    if profile.get("hero_frog", False):
+        return False
+    profile["hero_frog"] = True
+    profile["hero_hearts"] = 1
+    profile["biome_had_error"] = True
+    return True
 
 
 def chest_progress_hint(profile):
@@ -1898,6 +2139,10 @@ def reset_entire_marathon():
         p["sharp_sword_task"] = None
         p["boss_artifact_choice"] = None
         p["hero_hearts"] = 3
+        p["hero_frog"] = False
+        p["web_seconds_left"] = 0.0
+        p["vampire_bat_active"] = False
+        p["vampire_bat_target_world"] = None
         p["biome_had_error"] = False
         p["last_biome_clean"] = False
         p["chest_challenge"] = None
@@ -2020,7 +2265,7 @@ def enter_player(name):
         p = all_data[name.strip()]
         failed_world_idx, _ = get_task_position(p.get("task_num", 1))
         p["task_num"] = failed_world_idx * STEPS_PER_WORLD + 1
-        p["hero_hearts"] = 3
+        p["hero_hearts"] = hero_max_hearts(p)
         p["strength_mob_task"] = None
         p["frog_mob_task"] = None
         p["sharp_sword_task"] = None
@@ -2111,6 +2356,8 @@ async def main():
     global mob_hint_hidden, boss_hint_hidden
     global mob_regen_elapsed, mob_regen_started, mob_regen_flash_timer
     global mob_heat_seconds_left, mob_heat_save_accumulator
+    global mob_web_seconds_left, mob_web_save_accumulator
+    global mob_swap_seconds_left
     global boss_msg, boss_won, workbench_tab, stats_page, sound_enabled
     global history_page, history_selected_index
     global sage_msg, sage_finished, sage_won, sage_reward_name
@@ -2156,6 +2403,7 @@ async def main():
             if event.type == pygame.QUIT:
                 persist_marathon_timer()
                 persist_heat_rune_timer()
+                persist_mob_web_timer()
                 running = False
 
             elif game_state == "REGISTER":
@@ -2322,6 +2570,10 @@ async def main():
                         game_state = "CONFIRM_EXIT"
                         continue
                     if nav_workbench.collidepoint(mouse_pos):
+                        if player_data.get("hero_frog", False):
+                            message = "Лягушка не умеет пользоваться верстаком до конца марафона!"
+                            message_color = RED
+                            continue
                         persist_marathon_timer()
                         workbench_notice = ""
                         game_state = "WORKBENCH"
@@ -2349,7 +2601,7 @@ async def main():
                     if game_luck_btn.collidepoint(mouse_pos):
                         all_data = load_data()
                         p = all_data[player_name.strip()]
-                        if p.get("luck_timer", 0) == 0 and p.get("luck_potions", 0) > 0:
+                        if not p.get("hero_frog", False) and p.get("luck_timer", 0) == 0 and p.get("luck_potions", 0) > 0:
                             p["luck_potions"] -= 1
                             p["luck_timer"] = 10
                             save_data(all_data)
@@ -2374,7 +2626,7 @@ async def main():
                                     play_sound("correct")
                                     combo_count += 1
                                     gain = 2 if combo_count >= 5 else 1
-                                    if p.get("luck_timer", 0) > 0:
+                                    if not p.get("hero_frog", False) and p.get("luck_timer", 0) > 0:
                                         gain *= 2
                                         p["luck_timer"] -= 1
 
@@ -2426,6 +2678,7 @@ async def main():
                                         play_sound("wrong")
                                         p["boss_penalty_errors"] = p.get("boss_penalty_errors", 0) + 1
                                     register_pet_error(p)
+                                    bat_taken = trigger_vampire_bat(p)
                                     p.setdefault("marathon_error_details", []).append({
                                         "world": current_world_idx + 1,
                                         "task": task_num,
@@ -2449,6 +2702,10 @@ async def main():
                                     else:
                                         message = "Дракон стал сильнее."
                                         message_color = RED
+                                    if bat_taken is not None:
+                                        bat_label = (f"-{bat_taken} ИЗУМРУДОВ" if bat_taken
+                                                     else "ЛЕТУЧАЯ МЫШЬ УЛЕТЕЛА")
+                                        floating_texts.append([bat_label, hero_x, hero_y - 55, RED, 75])
                                     spawn_dust(hero_x, hero_y, color=(80, 80, 80))
 
             elif game_state == "CONFIRM_RESET":
@@ -2490,6 +2747,7 @@ async def main():
                                     all_data = load_data()
                                     p = all_data[player_name.strip()]
                                     pet_error = register_pet_error(p)
+                                    bat_taken = trigger_vampire_bat(p)
                                     p["sage_completed"] = True
                                     p["sage_artifact"] = None
                                     save_data(all_data)
@@ -2499,6 +2757,8 @@ async def main():
                                     sage_msg = "Библиотекарь уходит. В этом марафоне новой попытки не будет."
                                     if pet_error and pet_error["ran_away"]:
                                         sage_msg += f" {pet_error['pet_name']} тоже убежал!"
+                                    if bat_taken is not None:
+                                        sage_msg += f" {vampire_steal_text(bat_taken, bat=True)}"
                                     play_sound("wrong")
                                 break
 
@@ -2530,6 +2790,9 @@ async def main():
                                 if correct:
                                     play_sound("victory")
                                 else:
+                                    bat_taken = trigger_vampire_bat(p)
+                                    if bat_taken is not None:
+                                        p["chest_challenge"]["bat_notice"] = vampire_steal_text(bat_taken, bat=True)
                                     play_sound("wrong")
                                 save_data(all_data)
                                 player_data = p
@@ -2608,7 +2871,7 @@ async def main():
                                     hit_result = take_battle_hit(p)
                                     pet_error = register_pet_error(p)
                                     if hit_result == "down":
-                                        p["hero_hearts"] = 3
+                                        p["hero_hearts"] = hero_max_hearts(p)
                                     save_data(all_data)
                                     player_data = p
                                     pet_suffix = f" {pet_error['pet_name']} убежал!" if pet_error and pet_error["ran_away"] else ""
@@ -2621,7 +2884,7 @@ async def main():
                                         boss_msg = (
                                             f"Сердца кончились! Бой начат заново.{pet_suffix}"
                                             if hit_result == "down" else
-                                            f"Ошибка! Сердец: {p['hero_hearts']}/3. Серия сброшена.{pet_suffix}"
+                                            f"Ошибка! Сердец: {p['hero_hearts']}/{hero_max_hearts(p)}. Серия сброшена.{pet_suffix}"
                                         )
                                         spawn_dust(280, 190, color=(220, 50, 50))
                                         set_next_boss_task()
@@ -2674,9 +2937,16 @@ async def main():
 
             elif game_state == "MOB_BATTLE":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if mob_web_seconds_left > 0 and mob_hp > 0 and not mob_failed_reset:
+                        continue
                     if mob_hp == 0 or mob_failed_reset:
                         if mob_btn_continue.collidepoint(mouse_pos):
-                            if mob_hp == 0 and mob_defeat_timer > 20:
+                            vampire_flight = (
+                                mob_hp == 0
+                                and get_route_world(player_data, current_world_idx)["mob_id"] == "vampire"
+                                and player_data.get("frog_mob_task") != task_num
+                            )
+                            if mob_hp == 0 and mob_defeat_timer > (5 if vampire_flight else 20):
                                 continue
                             if mob_failed_reset:
                                 task_num = current_world_idx * STEPS_PER_WORLD + 1
@@ -2688,7 +2958,8 @@ async def main():
                                 all_data = load_data()
                                 p = all_data[player_name.strip()]
                                 p["task_num"] = task_num
-                                p["hero_hearts"] = 3
+                                p["hero_hearts"] = hero_max_hearts(p)
+                                p["web_seconds_left"] = 0.0
                                 p["strength_mob_task"] = None
                                 p["frog_mob_task"] = None
                                 p["heat_rune_task"] = None
@@ -2706,6 +2977,17 @@ async def main():
                                 all_data = load_data()
                                 p = all_data[player_name.strip()]
                                 p["emeralds"] += 5
+                                became_bat = (
+                                    get_route_world(p, current_world_idx)["mob_id"] == "vampire"
+                                    and p.get("frog_mob_task") != task_num
+                                )
+                                wolf_chased_bat = became_bat and p.get("pet") == "wolf" and not p.get("hero_frog", False)
+                                bat_departed = False
+                                if became_bat and not wolf_chased_bat:
+                                    p["vampire_bat_active"] = True
+                                    p["vampire_bat_target_world"] = current_world_idx + 1
+                                else:
+                                    bat_departed = release_vampire_bat_after_mob(p, current_world_idx)
                                 p["strength_mob_task"] = None
                                 p["frog_mob_task"] = None
                                 p["heat_rune_task"] = None
@@ -2713,13 +2995,22 @@ async def main():
                                 p["heat_rune_mob_hp"] = None
                                 p["heat_rune_regen_elapsed"] = 0.0
                                 p["sharp_sword_task"] = None
+                                p["web_seconds_left"] = 0.0
                                 defeated_worlds = p.setdefault("defeated_mob_worlds", [])
                                 if current_world_idx not in defeated_worlds:
                                     defeated_worlds.append(current_world_idx)
                                 save_data(all_data)
                                 player_data = p
                                 question_str, correct_ans, choices, current_op, clean_expr = make_task_for_step(player_data, task_num)
-                                message = "Моб повержен! Путь открыт!"
+                                message = (
+                                    "Волк прогнал летучую мышь!"
+                                    if wolf_chased_bat else
+                                    "Вампир стал летучей мышью и летит за тобой!"
+                                    if became_bat else
+                                    "Летучая мышь улетела без добычи!"
+                                    if bat_departed else
+                                    "Моб повержен! Путь открыт!"
+                                )
                                 message_color = GREEN
                                 game_state = "GAME"
                     elif mob_book_btn.collidepoint(mouse_pos):
@@ -2738,6 +3029,7 @@ async def main():
                         p = all_data[player_name.strip()]
                         if mob_hp > 1 and use_artifact_charge(p, "frog_wand"):
                             p["frog_mob_task"] = task_num
+                            p["web_seconds_left"] = 0.0
                             p["heat_rune_task"] = None
                             p["heat_rune_seconds_left"] = 0.0
                             p["heat_rune_mob_hp"] = None
@@ -2746,7 +3038,16 @@ async def main():
                             mob_max_hp = 1
                             mob_regen_elapsed = 0.0
                             mob_regen_started = False
+                            mob_regen_flash_timer = 0
                             mob_heat_seconds_left = 0.0
+                            mob_heat_save_accumulator = 0.0
+                            mob_web_seconds_left = 0.0
+                            mob_web_save_accumulator = 0.0
+                            mob_swap_seconds_left = 0.0
+                            mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
+                                p, current_world_idx
+                            )
+                            mob_hint_hidden = -1
                             mob_battle_result_msg = "Квак! Моб стал лягушкой с 1 сердцем!"
                             spawn_dust(720, 165, color=(70, 200, 85))
                             play_sound("purchase")
@@ -2778,7 +3079,8 @@ async def main():
                             all_data = load_data()
                             p = all_data[player_name.strip()]
                             potion_count = p.get("strength_potions", 0)
-                            if potion_count > 0 and mob_hp > 1 and not mob_strength_used:
+                            if (not p.get("hero_frog", False) and potion_count > 0
+                                    and mob_hp > 1 and not mob_strength_used):
                                 p["strength_potions"] = potion_count - 1
                                 p["strength_mob_task"] = task_num
                                 p["heat_rune_task"] = None
@@ -2803,7 +3105,7 @@ async def main():
 
                                 if mob_choices[i] == mob_ans:
                                     play_sound("hit")
-                                    pet_damage = 2 if p.get("pet", "none") != "none" else 1
+                                    pet_damage = 2 if p.get("pet", "none") != "none" and not p.get("hero_frog", False) else 1
                                     mob_hp = max(0, mob_hp - pet_damage)
                                     mob_regen_elapsed = 0.0
                                     mob_regen_started = mob_hp > 0
@@ -2815,12 +3117,21 @@ async def main():
 
                                     if mob_hp == 0:
                                         mob_defeat_timer = 45
-                                        spawn_dust(720, 190, color=(70, 65, 65))
-                                        mob_battle_result_msg = (
-                                            "ПОБЕДА! Волк помог: -2 жизни! (+5 изумрудов)"
-                                            if pet_damage == 2 else
-                                            "ПОБЕДА! Моб повержен! (+5 изумрудов!)"
-                                        )
+                                        vampire_won = (get_route_world(p, current_world_idx)["mob_id"] == "vampire"
+                                                       and p.get("frog_mob_task") != task_num)
+                                        if vampire_won:
+                                            mob_battle_result_msg = (
+                                                "Волк прогнал летучую мышь! (+5 изумрудов)"
+                                                if p.get("pet") == "wolf" and not p.get("hero_frog", False)
+                                                else "Вампир стал летучей мышью! (+5 изумрудов)"
+                                            )
+                                        else:
+                                            spawn_dust(720, 190, color=(70, 65, 65))
+                                            mob_battle_result_msg = (
+                                                "ПОБЕДА! Волк помог: -2 жизни! (+5 изумрудов)"
+                                                if pet_damage == 2 else
+                                                "ПОБЕДА! Моб повержен! (+5 изумрудов!)"
+                                            )
                                     else:
                                         mob_battle_result_msg = (
                                             f"Волк атаковал! -2 жизни. Осталось: {mob_hp}"
@@ -2833,8 +3144,23 @@ async def main():
                                         mob_hint_hidden = -1
                                 else:
                                     play_sound("wrong")
-                                    hit_result = take_battle_hit(p)
+                                    mob_id = get_route_world(p, current_world_idx)["mob_id"]
+                                    ability_active = p.get("frog_mob_task") != task_num
+                                    if mob_id == "witch" and ability_active and apply_witch_curse(p):
+                                        hit_result = "frog"
+                                    else:
+                                        hit_result = take_battle_hit(p)
                                     pet_error = register_pet_error(p)
+                                    vampire_taken = (
+                                        steal_emeralds(p, MOB_ABILITIES["vampire"]["steal_amount"])
+                                        if mob_id == "vampire" and ability_active else None
+                                    )
+                                    bat_taken = trigger_vampire_bat(p)
+                                    if (mob_id == "cave_spider" and ability_active
+                                            and hit_result != "down" and mob_web_seconds_left <= 0
+                                            and random.random() < MOB_ABILITIES["cave_spider"]["web_chance"]):
+                                        mob_web_seconds_left = MOB_ABILITIES["cave_spider"]["web_seconds"]
+                                        p["web_seconds_left"] = mob_web_seconds_left
                                     save_data(all_data)
                                     player_data = p
                                     pet_suffix = f" {pet_error['pet_name']} убежал!" if pet_error and pet_error["ran_away"] else ""
@@ -2845,16 +3171,29 @@ async def main():
                                             p, current_world_idx
                                         )
                                         mob_hint_hidden = -1
+                                    elif hit_result == "frog":
+                                        mob_battle_result_msg = "Ведьма превратила тебя в лягушку! Осталось 1 сердце."
+                                        mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
+                                            p, current_world_idx
+                                        )
+                                        mob_hint_hidden = -1
                                     elif hit_result == "down":
                                         mob_failed_reset = True
                                         mob_battle_result_msg = f"Сердца кончились! Биом начат заново.{pet_suffix}"
                                         spawn_dust(280, 190, color=(220, 50, 50))
                                     else:
-                                        mob_battle_result_msg = f"Ошибка! Осталось сердец: {p['hero_hearts']}/3.{pet_suffix}"
+                                        mob_battle_result_msg = f"Ошибка! Осталось сердец: {p['hero_hearts']}/{hero_max_hearts(p)}.{pet_suffix}"
                                         mob_task_str, mob_ans, mob_choices, mob_op, mob_clean_expr = make_mob_battle_task(
                                             p, current_world_idx
                                         )
                                         mob_hint_hidden = -1
+                                    if mob_web_seconds_left > 0:
+                                        mob_battle_result_msg = "Паутина! 10 секунд без ответов, время идёт."
+                                    if vampire_taken is not None:
+                                        mob_battle_result_msg = vampire_steal_text(vampire_taken)
+                                    elif bat_taken is not None:
+                                        mob_battle_result_msg = vampire_steal_text(bat_taken, bat=True)
+                                mob_swap_seconds_left = MOB_ABILITIES["magma_cube"]["swap_seconds"]
 
             elif game_state == "REVIEW":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -2929,12 +3268,16 @@ async def main():
 
                     elif workbench_tab == "VEHICLES":
                         for idx, w_info in enumerate(WORLDS):
-                            _, _, b_upg = get_shop_row_rects(idx, len(WORLDS))
+                            _, _, b_upg = get_shop_row_rects(idx, len(WORLDS) + 1)
                             toggle_btn = get_vehicle_toggle_rect(idx)
                             v_code = w_info["vehicle_type"]
                             if toggle_btn.collidepoint(mouse_pos) and v_code in p.get("owned_vehicles", []):
                                 disabled = p.setdefault("disabled_vehicles", [])
-                                if v_code in disabled:
+                                if p.get("unicorn_equipped", False):
+                                    p["unicorn_equipped"] = False
+                                    if v_code in disabled:
+                                        disabled.remove(v_code)
+                                elif v_code in disabled:
                                     disabled.remove(v_code)
                                 else:
                                     disabled.append(v_code)
@@ -2946,6 +3289,7 @@ async def main():
                                     p.setdefault("owned_vehicles", []).append(v_code)
                                     if v_code in p.setdefault("disabled_vehicles", []):
                                         p["disabled_vehicles"].remove(v_code)
+                                    p["unicorn_equipped"] = False
                                     play_sound("purchase")
                                     save_data(all_data)
                                 elif v_code not in p["upgraded_vehicles"] and p["emeralds"] >= w_info["upg_cost"]:
@@ -2954,6 +3298,21 @@ async def main():
                                     play_sound("purchase")
                                     save_data(all_data)
                                 player_data = p
+                        unicorn_idx = len(WORLDS)
+                        _, _, buy_unicorn = get_shop_row_rects(unicorn_idx, unicorn_idx + 1)
+                        toggle_unicorn = get_vehicle_toggle_rect(unicorn_idx)
+                        if UNICORN["id"] in p.get("owned_vehicles", []):
+                            if toggle_unicorn.collidepoint(mouse_pos):
+                                p["unicorn_equipped"] = not p.get("unicorn_equipped", False)
+                                save_data(all_data)
+                                player_data = p
+                        elif buy_unicorn.collidepoint(mouse_pos) and p["emeralds"] >= UNICORN["cost"]:
+                            p["emeralds"] -= UNICORN["cost"]
+                            p.setdefault("owned_vehicles", []).append(UNICORN["id"])
+                            p["unicorn_equipped"] = True
+                            play_sound("purchase")
+                            save_data(all_data)
+                            player_data = p
 
                     elif workbench_tab == "ARTIFACTS":
                         for idx, (art_id, art_info) in enumerate(ARTIFACTS.items()):
@@ -3044,6 +3403,8 @@ async def main():
                                     p["emeralds"] -= pet_info["cost"]
                                     p["pet"] = pet_id
                                     p["pet_errors"] = 0
+                                    if wolf_repels_vampire_bat(p):
+                                        workbench_notice = "Волк прогнал летучую мышь!"
                                     play_sound("purchase")
                                     save_data(all_data)
                                 player_data = p
@@ -3054,13 +3415,8 @@ async def main():
 
         cur_w = get_world_location(player_data, current_world_idx)
         cur_route = get_route_world(player_data, current_world_idx)
-        cur_v_type = cur_w["vehicle_type"]
-        has_vehicle = (
-            cur_v_type in player_data.get("owned_vehicles", [])
-            and cur_v_type not in player_data.get("disabled_vehicles", [])
-        ) if player_data else False
-        is_upgraded = has_vehicle and cur_v_type in player_data.get("upgraded_vehicles", []) if player_data else False
-        travel_type = cur_v_type if has_vehicle else "foot"
+        travel_type, is_upgraded = get_active_vehicle(player_data, cur_w)
+        has_vehicle = travel_type != "foot"
 
         if is_moving:
             move_speed = 0.13 if is_upgraded else 0.09 if has_vehicle else 0.055
@@ -3091,7 +3447,7 @@ async def main():
                 prev_x = platforms[step_in_world - 1][0]
                 hero_x = prev_x + (target_x - prev_x) * move_progress
 
-                if travel_type in ["pig", "llama"]:
+                if travel_type in ("pig", "llama", "unicorn"):
                     hero_y = (platforms[0][1] - 24) - 28 * abs(math.sin(move_progress * math.pi * 2))
                 elif travel_type == "boat":
                     hero_y = (platforms[0][1] - 24)
@@ -3337,11 +3693,13 @@ async def main():
                 name_surface = FONT_BIG.render(mob_name, True, DARK_TEXT)
                 screen.blit(name_surface, (mob_card.centerx - name_surface.get_width() // 2, 135))
                 draw_mob(screen, mob_card.centerx, 235, mob_id, anim_tick=anim_tick)
-                ability_surface = FONT_MED.render(ability["name"], True, (160, 55, 45))
-                screen.blit(ability_surface, (mob_card.centerx - ability_surface.get_width() // 2, 300))
+                draw_centered_wrapped_text(
+                    screen, ability["name"], FONT_MED, (160, 55, 45),
+                    mob_card.centerx, 296, mob_card.width - 20, line_gap=2
+                )
                 draw_centered_wrapped_text(
                     screen, ability["desc"], FONT_SMALL, DARK_TEXT,
-                    mob_card.centerx, 340, mob_card.width - 28, line_gap=5
+                    mob_card.centerx, 350, mob_card.width - 28, line_gap=5
                 )
 
             page_surface = FONT_SMALL.render(
@@ -3396,14 +3754,15 @@ async def main():
             for pt in particles:
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
-            draw_steve_animated(screen, int(hero_x), int(hero_y), travel_type, is_upgraded,
-                                helmet=player_data.get("helmet", "none"), 
+            draw_player_character(screen, int(hero_x), int(hero_y), player_data, travel_type, is_upgraded,
                                 anim_tick=anim_tick, is_moving=is_moving, squash=squash_val,
-                                sword_swing=sword_swing_timer, avatar=player_data.get("avatar", "girl"),
+                                sword_swing=sword_swing_timer,
                                 show_sword=has_active_artifact(player_data, "sharp_sword"))
-            if player_data.get("pet", "none") == "wolf":
+            if player_data.get("pet", "none") == "wolf" and not player_data.get("hero_frog", False):
                 pet_x = int(hero_x - 48 if not is_moving else hero_x - 58)
                 draw_pet_wolf(screen, pet_x, int(hero_y + 23), anim_tick=anim_tick)
+            if player_data.get("vampire_bat_active", False):
+                draw_vampire_bat(screen, int(hero_x + 43), int(hero_y - 38), anim_tick)
 
             for ft in floating_texts:
                 f_surf = FONT_BIG.render(ft[0], True, ft[3])
@@ -3417,11 +3776,12 @@ async def main():
             equipped_helmet = player_data.get("helmet", "none")
             helmet_durability = player_data.get("helmet_durability", {}).get(equipped_helmet, 0)
             pet_errors = player_data.get("pet_errors", 0)
-            totem_info = f" | Т: {totems_cnt}" if totems_cnt > 0 else ""
-            luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 else ""
+            frog_curse = player_data.get("hero_frog", False)
+            totem_info = f" | Т: {totems_cnt}" if totems_cnt > 0 and not frog_curse else ""
+            luck_info = f" | Уд: x2 ({luck_cnt})" if luck_cnt > 0 and not frog_curse else ""
             errors_info = f" | О: {errors_cnt}" if errors_cnt > 0 else ""
-            helmet_info = f" | Ш: {helmet_durability}" if equipped_helmet != "none" else ""
-            pet_info = f" | Волк: {pet_errors}/2" if player_data.get("pet", "none") != "none" else ""
+            helmet_info = f" | Ш: {helmet_durability}" if equipped_helmet != "none" and not frog_curse else ""
+            pet_info = f" | Волк: {pet_errors}/2" if player_data.get("pet", "none") != "none" and not frog_curse else ""
             time_info = f" | В: {format_duration(marathon_elapsed_seconds)}"
 
             bar_box = pygame.Rect(15, 10, 460, 34)
@@ -3436,7 +3796,8 @@ async def main():
             info_txt = info_font.render(info_label, True, DARK_TEXT)
             screen.blit(info_txt, (46, 17))
 
-            draw_mc_button(screen, nav_workbench, "Верстак", nav_workbench.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+            draw_mc_button(screen, nav_workbench, "Верстак", nav_workbench.collidepoint(mouse_pos) and not player_data.get("hero_frog", False),
+                           active=not player_data.get("hero_frog", False), font_pref=FONT_SMALL)
             draw_mc_button(screen, nav_players, "Игроки", nav_players.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(95, 100, 125))
             sound_label = "Звук: да" if sound_enabled else "Звук: нет"
             draw_mc_button(screen, nav_sound, sound_label, nav_sound.collidepoint(mouse_pos), font_pref=FONT_TINY, custom_bg=(70, 115, 155))
@@ -3452,23 +3813,30 @@ async def main():
             pygame.draw.rect(screen, MC_GUI_BLACK, exp_bg, 2)
 
             luck_potions = player_data.get("luck_potions", 0)
-            if luck_cnt > 0:
+            if luck_cnt > 0 and not player_data.get("hero_frog", False):
                 draw_mc_button(
                     screen, game_luck_btn, f"Удача активна: {luck_cnt}",
                     False, False, font_pref=FONT_SMALL, custom_bg=(90, 65, 120)
                 )
-            elif luck_potions > 0:
+            elif luck_potions > 0 and not player_data.get("hero_frog", False):
                 draw_mc_button(
                     screen, game_luck_btn, f"Выпить Удачу ({luck_potions})",
                     game_luck_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL,
                     custom_bg=(125, 65, 165)
                 )
 
-            v_title = cur_w["upg_name"] if is_upgraded else cur_w["v_name"] if has_vehicle else "Пешком"
+            v_title = (
+                "Лягушка" if player_data.get("hero_frog", False) else
+                UNICORN["name"] if travel_type == UNICORN["id"] else
+                cur_w["upg_name"] if is_upgraded else cur_w["v_name"] if has_vehicle else "Пешком"
+            )
             title_world = FONT_BIG.render(f"{cur_w['name']}  ({v_title})", True, DARK_TEXT if cur_w["dark_text"] else WHITE)
             screen.blit(title_world, (WIDTH//2 - title_world.get_width()//2, 72))
 
-            if current_op == "adaptive" and task_num <= TOTAL_QUESTS:
+            if player_data.get("hero_frog", False):
+                draw_readable_badge(screen, WIDTH // 2, 118, "ЛЯГУШКА: 1 СЕРДЦЕ · ПРЕДМЕТЫ НЕ ДЕЙСТВУЮТ",
+                                    border_col=(40, 115, 55), text_col=WHITE, font=FONT_SMALL)
+            elif current_op == "adaptive" and task_num <= TOTAL_QUESTS:
                 draw_readable_badge(screen, WIDTH // 2, 118, "ПОВТОР ПРОШЛОЙ ОШИБКИ", border_col=(115, 65, 155), text_col=(235, 205, 255), font=FONT_SMALL)
             elif combo_count >= 5:
                 draw_readable_badge(screen, WIDTH // 2, 118, f"СЕРИЯ x{combo_count} БЕЗ ОШИБОК! (+2 изумруда)", border_col=(140, 120, 40), text_col=MC_GOLD, font=FONT_SMALL)
@@ -3560,14 +3928,16 @@ async def main():
             pygame.draw.rect(screen, (60, 60, 65), (210, 205, 140, 20), 2)
             s_lbl = FONT_SMALL.render(player_name, True, DARK_TEXT)
             screen.blit(s_lbl, (280 - s_lbl.get_width() // 2, 115))
-            draw_steve_animated(screen, 280, 175, travel_type, is_upgraded,
-                                helmet=player_data.get("helmet", "none"),
+            draw_player_character(screen, 280, 175, player_data, travel_type, is_upgraded,
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer,
-                                avatar=player_data.get("avatar", "girl"),
                                 show_sword=(has_active_artifact(player_data, "sharp_sword")
                                             or player_data.get("sharp_sword_task") == task_num))
-            if player_data.get("pet", "none") == "wolf":
+            if player_data.get("pet", "none") == "wolf" and not player_data.get("hero_frog", False):
                 draw_pet_wolf(screen, 220, 205, anim_tick=anim_tick)
+            if player_data.get("vampire_bat_active", False):
+                draw_vampire_bat(screen, 225, 135, anim_tick)
+            if mob_web_seconds_left > 0:
+                draw_cave_web(screen, 280, 175)
 
             vs_box = pygame.Rect(WIDTH // 2 - 24, 150, 48, 32)
             pygame.draw.rect(screen, (220, 60, 60), vs_box, border_radius=6)
@@ -3615,11 +3985,21 @@ async def main():
                     pygame.draw.circle(screen, (110, 230, 255), (720, 165),
                                        48 + mob_regen_flash_timer, 3)
             else:
-                draw_mob_defeat_effect(screen, 720, 165, mob_defeat_timer)
+                if cur_route["mob_id"] == "vampire" and not is_frog:
+                    flight = (45 - mob_defeat_timer) / 45
+                    if player_data.get("pet") == "wolf" and not player_data.get("hero_frog", False):
+                        draw_vampire_bat(screen, 720 + int(90 * flight), 145 - int(80 * flight), anim_tick)
+                    else:
+                        draw_vampire_bat(screen, 720 - int(390 * flight), 145 - int(12 * flight), anim_tick)
+                else:
+                    draw_mob_defeat_effect(screen, 720, 165, mob_defeat_timer)
 
             ability_label = (
                 "Квак! Волшебная лягушка: 1 сердце, прежняя способность исчезла."
                 if is_frog else
+                "Волк отогнал летучую мышь: кражи после боя не будет."
+                if mob_hp == 0 and cur_route["mob_id"] == "vampire"
+                and player_data.get("pet") == "wolf" and not player_data.get("hero_frog", False) else
                 f"{mob_ability.get('name', 'Без способности')}: {mob_ability.get('desc', '')}"
             )
             ability_font = FONT_SMALL if FONT_SMALL.size(ability_label)[0] <= 700 else FONT_TINY
@@ -3630,6 +4010,9 @@ async def main():
                 pygame.draw.rect(screen, pt[4], (int(pt[0]), int(pt[1]), pt[6], pt[6]))
 
             if mob_hp > 0 and not mob_failed_reset:
+                if cur_route["mob_id"] == "magma_cube" and not is_frog and mob_swap_seconds_left <= 0:
+                    mob_choices = rotate_visible_choices(mob_choices, mob_hint_hidden)
+                    mob_swap_seconds_left = mob_ability["swap_seconds"]
                 q_mob_box = pygame.Rect(WIDTH // 2 - 140, 260, 280, 62)
                 pygame.draw.rect(screen, (160, 115, 65), q_mob_box)
                 pygame.draw.rect(screen, (100, 65, 30), q_mob_box, 3)
@@ -3640,16 +4023,25 @@ async def main():
                     if i == mob_hint_hidden:
                         draw_mc_button(screen, rect, "Убрано", active=False, font_pref=FONT_SMALL)
                     else:
-                        draw_mc_button(screen, rect, str(mob_choices[i]), rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                        draw_mc_button(screen, rect, str(mob_choices[i]),
+                                       rect.collidepoint(mouse_pos) and mob_web_seconds_left <= 0,
+                                       active=mob_web_seconds_left <= 0, font_pref=FONT_BIG)
 
                 draw_readable_badge(screen, WIDTH // 2, 425, mob_battle_result_msg, border_col=(70, 70, 75), text_col=WHITE, font=FONT_MED)
 
-                totem_hint = f"Активных тотемов защиты: {player_data.get('totems', 0)} шт." if player_data.get('totems', 0) > 0 else "Тотемов нет! Ошибка сбросит биом в начало!"
+                totem_hint = (
+                    "Лягушка: тотемы и предметы не действуют"
+                    if player_data.get("hero_frog", False) else
+                    f"Активных тотемов защиты: {player_data.get('totems', 0)} шт."
+                    if player_data.get('totems', 0) > 0 else
+                    "Тотемов нет! Ошибка сбросит биом в начало!"
+                )
                 th_surf = FONT_SMALL.render(totem_hint, True, (40, 130, 40) if player_data.get('totems', 0) > 0 else (160, 60, 60))
                 screen.blit(th_surf, (WIDTH // 2 - th_surf.get_width() // 2, 460))
 
                 strength_count = player_data.get("strength_potions", 0)
-                can_use_strength = strength_count > 0 and mob_hp > 1 and not mob_strength_used
+                can_use_strength = (not player_data.get("hero_frog", False)
+                                    and strength_count > 0 and mob_hp > 1 and not mob_strength_used)
                 strength_label = (
                     f"Выпить Зелье Силы ({strength_count})"
                     if not mob_strength_used else
@@ -3688,6 +4080,14 @@ async def main():
                     draw_mc_button(screen, mob_heat_btn, heat_label,
                                    mob_heat_btn.collidepoint(mouse_pos) and can_use_heat,
                                    can_use_heat, font_pref=FONT_SMALL)
+                if mob_web_seconds_left > 0:
+                    draw_readable_badge(screen, WIDTH // 2, 555,
+                                        f"ПАУТИНА: {math.ceil(mob_web_seconds_left)} с · отвечать нельзя",
+                                        border_col=(65, 125, 155), text_col=WHITE, font=FONT_SMALL)
+                if cur_route["mob_id"] == "magma_cube" and not is_frog:
+                    draw_readable_badge(screen, WIDTH // 2, 555,
+                                        f"СМЕНА ОТВЕТОВ ЧЕРЕЗ {math.ceil(mob_swap_seconds_left)} с",
+                                        border_col=(155, 75, 35), text_col=WHITE, font=FONT_SMALL)
             else:
                 res_box = pygame.Rect(WIDTH // 2 - 250, 260, 500, 185)
                 pygame.draw.rect(screen, WHITE, res_box, border_radius=8)
@@ -3696,12 +4096,21 @@ async def main():
                 r_title = FONT_BIG.render(mob_battle_result_msg, True, GREEN if mob_hp == 0 else RED)
                 screen.blit(r_title, (WIDTH // 2 - r_title.get_width() // 2, 290))
 
-                sub_info = "Ты одолел стража биома и добыл трофеи!" if mob_hp == 0 else "Моб нанёс критический удар и отбросил тебя назад..."
+                sub_info = (
+                    "Волк отогнал мышь: она не последует за героем."
+                    if mob_hp == 0 and cur_route["mob_id"] == "vampire" and not is_frog
+                    and player_data.get("pet") == "wolf" and not player_data.get("hero_frog", False) else
+                    "Летучая мышь будет рядом до следующего стража."
+                    if mob_hp == 0 and cur_route["mob_id"] == "vampire" and not is_frog else
+                    "Ты одолел стража биома и добыл трофеи!" if mob_hp == 0 else
+                    "Моб нанёс критический удар и отбросил тебя назад..."
+                )
                 sub_s = FONT_MED.render(sub_info, True, DARK_TEXT)
                 screen.blit(sub_s, (WIDTH // 2 - sub_s.get_width() // 2, 345))
 
                 btn_txt = "Продолжить путь!" if mob_hp == 0 else "Попробовать биом сначала"
-                can_continue = mob_failed_reset or mob_defeat_timer <= 20
+                vampire_flight = mob_hp == 0 and cur_route["mob_id"] == "vampire" and not is_frog
+                can_continue = mob_failed_reset or mob_defeat_timer <= (5 if vampire_flight else 20)
                 draw_mc_button(
                     screen,
                     mob_btn_continue,
@@ -3801,6 +4210,9 @@ async def main():
                                            WIDTH // 2, 315, 650)
                 draw_mc_button(screen, chest_continue_btn, "Продолжить путь", chest_continue_btn.collidepoint(mouse_pos),
                                font_pref=FONT_MED, custom_bg=(70, 135, 75))
+            if lock.get("bat_notice"):
+                draw_readable_badge(screen, WIDTH // 2, 535, lock["bat_notice"],
+                                    border_col=(95, 45, 105), text_col=WHITE, font=FONT_SMALL)
 
         elif game_state == "BOSS_BATTLE":
             screen.fill((15, 10, 25))
@@ -3819,12 +4231,10 @@ async def main():
             screen.blit(t_boss, (WIDTH // 2 - t_boss.get_width() // 2, 58))
 
             pygame.draw.rect(screen, (50, 45, 60), (210, 215, 140, 18))
-            draw_steve_animated(screen, 280, 185, travel_type, is_upgraded,
-                                helmet=player_data.get("helmet", "none"),
+            draw_player_character(screen, 280, 185, player_data, travel_type, is_upgraded,
                                 anim_tick=anim_tick, sword_swing=sword_swing_timer,
-                                avatar=player_data.get("avatar", "girl"),
                                 show_sword=has_active_artifact(player_data, "sharp_sword"))
-            if player_data.get("pet", "none") == "wolf":
+            if player_data.get("pet", "none") == "wolf" and not player_data.get("hero_frog", False):
                 draw_pet_wolf(screen, 220, 215, anim_tick=anim_tick)
             
             if boss_max_hp <= 10:
@@ -3860,7 +4270,9 @@ async def main():
 
                 draw_readable_badge(screen, WIDTH // 2, 425, boss_msg, border_col=(90, 70, 120), text_col=WHITE, font=FONT_MED)
 
-                totem_hint = f"Тотемов для защиты: {player_data.get('totems', 0)} шт."
+                totem_hint = ("Лягушка: тотемы и предметы не действуют"
+                              if player_data.get("hero_frog", False) else
+                              f"Тотемов для защиты: {player_data.get('totems', 0)} шт.")
                 th_surf = FONT_SMALL.render(totem_hint, True, (200, 180, 240))
                 screen.blit(th_surf, (WIDTH // 2 - th_surf.get_width() // 2, 460))
                 book_charges = player_data.get("artifact_charges", {}).get("hint_book", 0)
@@ -4202,7 +4614,7 @@ async def main():
 
             elif workbench_tab == "VEHICLES":
                 for idx, w_info in enumerate(WORLDS):
-                    row_rect, slot_rect, b_upg = get_shop_row_rects(idx, len(WORLDS))
+                    row_rect, slot_rect, b_upg = get_shop_row_rects(idx, len(WORLDS) + 1)
                     pygame.draw.rect(screen, (220, 220, 220), row_rect)
                     pygame.draw.rect(screen, MC_GUI_DARK, row_rect, 1)
 
@@ -4213,7 +4625,8 @@ async def main():
 
                     is_owned = w_info["vehicle_type"] in player_data.get("owned_vehicles", [])
                     is_upg = w_info["vehicle_type"] in player_data.get("upgraded_vehicles", [])
-                    is_disabled = w_info["vehicle_type"] in player_data.get("disabled_vehicles", [])
+                    is_disabled = (w_info["vehicle_type"] in player_data.get("disabled_vehicles", [])
+                                   or player_data.get("unicorn_equipped", False))
                     if not is_owned:
                         transport_status = f"Купить: {w_info['v_cost']} · ускоряет движение"
                     elif not is_upg:
@@ -4235,6 +4648,33 @@ async def main():
                         toggle_btn = get_vehicle_toggle_rect(idx)
                         toggle_label = "Надеть" if is_disabled else "Снять"
                         draw_mc_button(screen, toggle_btn, toggle_label, toggle_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
+
+                unicorn_idx = len(WORLDS)
+                row_rect, slot_rect, buy_unicorn = get_shop_row_rects(unicorn_idx, unicorn_idx + 1)
+                pygame.draw.rect(screen, (238, 225, 245), row_rect)
+                pygame.draw.rect(screen, (125, 75, 155), row_rect, 2)
+                draw_mc_slot_frame(screen, slot_rect.x, slot_rect.y, 50)
+                draw_item_icon(screen, "veh_unicorn", slot_rect.centerx, slot_rect.centery)
+                screen.blit(FONT_MED.render(UNICORN["name"], True, DARK_TEXT),
+                            (slot_rect.right + 15, row_rect.y + 7))
+                unicorn_owned = UNICORN["id"] in player_data.get("owned_vehicles", [])
+                unicorn_equipped = unicorn_owned and player_data.get("unicorn_equipped", False)
+                unicorn_status = (
+                    "Все биомы · максимальная скорость · используется" if unicorn_equipped else
+                    "Все биомы · максимальная скорость · снята" if unicorn_owned else
+                    f"Все биомы · максимальная скорость · {UNICORN['cost']} изумрудов"
+                )
+                screen.blit(FONT_SMALL.render(unicorn_status, True, (80, 80, 80)),
+                            (slot_rect.right + 15, row_rect.y + 34))
+                draw_mc_button(screen, buy_unicorn, "Куплено" if unicorn_owned else "Купить",
+                               buy_unicorn.collidepoint(mouse_pos) and not unicorn_owned
+                               and player_data["emeralds"] >= UNICORN["cost"],
+                               not unicorn_owned and player_data["emeralds"] >= UNICORN["cost"],
+                               font_pref=FONT_SMALL)
+                if unicorn_owned:
+                    toggle_unicorn = get_vehicle_toggle_rect(unicorn_idx)
+                    draw_mc_button(screen, toggle_unicorn, "Снять" if unicorn_equipped else "Надеть",
+                                   toggle_unicorn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
 
             elif workbench_tab == "ARTIFACTS":
                 for idx, (art_id, art_info) in enumerate(ARTIFACTS.items()):
@@ -4344,16 +4784,15 @@ async def main():
             hero_label = FONT_SMALL.render("Герой", True, DARK_TEXT)
             screen.blit(hero_label, (hero_card.centerx - hero_label.get_width() // 2, 128))
             portrait = pygame.Surface((80, 100), pygame.SRCALPHA)
-            draw_steve_animated(
-                portrait, 40, 45, travel_type, is_upgraded,
-                helmet=player_data.get("helmet", "none"), anim_tick=anim_tick,
-                avatar=player_data.get("avatar", "girl"),
+            draw_player_character(
+                portrait, 40, 45, player_data, travel_type, is_upgraded,
+                anim_tick=anim_tick,
                 show_sword=has_active_artifact(player_data, "sharp_sword"),
             )
             screen.blit(pygame.transform.scale(portrait, (100, 125)), (20, 150))
             life_label = FONT_TINY.render("Жизни", True, DARK_TEXT)
             screen.blit(life_label, (hero_card.centerx - life_label.get_width() // 2, 273))
-            for heart_index in range(3):
+            for heart_index in range(hero_max_hearts(player_data)):
                 draw_mc_heart(screen, 38 + heart_index * 31, 305,
                               filled=heart_index < player_data.get("hero_hearts", 3))
             helmet_id = player_data.get("helmet", "none")
@@ -4375,16 +4814,29 @@ async def main():
 
         if game_state in ("GAME", "MOB_BATTLE", "BOSS_BATTLE"):
             hero_hearts = player_data.get("hero_hearts", 3)
-            for heart_index in range(3):
+            for heart_index in range(hero_max_hearts(player_data)):
                 if game_state == "GAME":
                     heart_x, heart_y = 30 + heart_index * 31, 550
                 else:
-                    heart_x, heart_y = 280 - (3 * 26) // 2 + 13 + heart_index * 26, 95
+                    heart_x, heart_y = 280 - (hero_max_hearts(player_data) * 26) // 2 + 13 + heart_index * 26, 95
                 draw_mc_heart(screen, heart_x, heart_y, filled=heart_index < hero_hearts)
 
         pygame.display.flip()
         await asyncio.sleep(0)
         frame_seconds = min(clock.tick(60) / 1000.0, 0.25)
+        if (game_state == "MOB_BATTLE" and cur_route["mob_id"] == "magma_cube"
+                and player_data.get("frog_mob_task") != task_num
+                and mob_hp > 0 and not mob_failed_reset):
+            mob_swap_seconds_left = max(0.0, mob_swap_seconds_left - frame_seconds)
+        if game_state == "MOB_BATTLE" and mob_web_seconds_left > 0 and mob_hp > 0 and not mob_failed_reset:
+            mob_web_seconds_left = max(0.0, mob_web_seconds_left - frame_seconds)
+            player_data["web_seconds_left"] = round(mob_web_seconds_left, 2)
+            mob_web_save_accumulator += frame_seconds
+            if mob_web_save_accumulator >= 1.0 or mob_web_seconds_left == 0:
+                persist_mob_web_timer()
+                mob_web_save_accumulator = 0.0
+            if mob_web_seconds_left == 0:
+                mob_battle_result_msg = "Паутина распалась! Теперь можно отвечать."
         if (game_state == "MOB_BATTLE" and cur_route["mob_id"] == "ice_golem"
                 and mob_hp > 0 and not mob_failed_reset):
             unprotected_seconds = frame_seconds

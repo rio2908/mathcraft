@@ -24,10 +24,12 @@ from game_tasks import (
     get_world_location,
     is_final_boss_position,
     make_math_task,
+    make_nether_task,
     make_review_task,
     pick_logic_task,
     pick_chest_key_task,
     pick_logic_task_with_history,
+    rotate_visible_choices,
 )
 
 
@@ -242,6 +244,43 @@ class MathTaskTests(unittest.TestCase):
         ]
         self.assertLessEqual(max(easy_answers), 20)
         self.assertGreater(max(hard_answers), 20)
+
+    def test_nether_tasks_mix_exactly_two_operations_with_mode_limits(self):
+        for difficulty, limit in (("easy", 20), ("hard", 100)):
+            first_operations = set()
+            for _ in range(300):
+                question, answer, choices, operation, expression = make_nether_task(
+                    "Игрок", difficulty=difficulty
+                )
+                left, first, right, second, change = expression.split()
+                left, right, change = int(left), int(right), int(change)
+                first_operations.add(first)
+                intermediate = left * right if first == "x" else left // right
+                if first == ":":
+                    self.assertEqual(left % right, 0)
+                expected = intermediate + change if second == "+" else intermediate - change
+                self.assertEqual(operation, "mixed")
+                self.assertEqual(question, f"{expression} = ?")
+                self.assertEqual(answer, expected)
+                self.assertTrue(all(1 <= value <= limit for value in (left, right, change, answer)))
+                self.assertEqual(len(set(choices)), 3)
+                self.assertIn(answer, choices)
+                review = make_review_task({"expr": expression, "correct": answer, "wrong": choices[0]})
+                self.assertEqual(review[0], question)
+                self.assertEqual(review[1], answer)
+            self.assertEqual(first_operations, {"x", ":"} if difficulty == "hard" else {"x"})
+
+    def test_rotating_answers_preserves_hidden_hint_and_moves_visible_values(self):
+        original = [12, 14, 16]
+        for hidden in (-1, 0, 1, 2):
+            rotated = rotate_visible_choices(original, hidden)
+            self.assertEqual(set(rotated), set(original))
+            for index, answer in enumerate(original):
+                if index == hidden:
+                    self.assertEqual(rotated[index], answer)
+                else:
+                    self.assertNotEqual(rotated[index], answer)
+            self.assertEqual(original, [12, 14, 16])
 
     def test_custom_profile_math_uses_saved_difficulty(self):
         answers = [

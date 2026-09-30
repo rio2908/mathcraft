@@ -209,6 +209,19 @@ def make_answer_choices(answer, minimum, maximum):
     return choices
 
 
+def rotate_visible_choices(choices, hidden_index=-1):
+    """Move every visible answer, leaving a hint-book slot untouched."""
+    rotated = list(choices)
+    visible = [index for index in range(len(choices)) if index != hidden_index]
+    if len(visible) < 2:
+        return rotated
+    shift = random.randint(1, len(visible) - 1)
+    values = [choices[index] for index in visible]
+    for index, value in zip(visible, values[shift:] + values[:shift]):
+        rotated[index] = value
+    return rotated
+
+
 def make_math_task(ops_list, profile_name, force_missing=False, difficulty=None):
     op = random.choice(ops_list)
     is_hard = get_profile_difficulty(profile_name, difficulty) == "hard"
@@ -268,6 +281,40 @@ def make_math_task(ops_list, profile_name, force_missing=False, difficulty=None)
         make_answer_choices(ans, 1, max_answer),
         op,
         f"{a} {sym} {b}",
+    )
+
+
+def make_nether_task(profile_name, difficulty=None):
+    """Two-operation battle task with mode-appropriate numbers and integer answer."""
+    is_hard = get_profile_difficulty(profile_name, difficulty) == "hard"
+    limit = 100 if is_hard else 20
+    if is_hard and random.choice((True, False)):
+        divisor = random.randint(2, 10)
+        intermediate = random.randint(2, 10)
+        left, first_op, right = divisor * intermediate, ":", divisor
+    else:
+        pairs = [
+            (a, b) for a in range(2, 11 if is_hard else 6)
+            for b in range(2, 11 if is_hard else 6)
+            if a * b <= (80 if is_hard else 15)
+        ]
+        left, right = random.choice(pairs)
+        intermediate, first_op = left * right, "x"
+
+    second_op = random.choice(("+", "-"))
+    if second_op == "+":
+        change = random.randint(1, min(20 if is_hard else 5, limit - intermediate))
+        answer = intermediate + change
+    else:
+        change = random.randint(1, min(20 if is_hard else 5, intermediate - 1))
+        answer = intermediate - change
+    expression = f"{left} {first_op} {right} {second_op} {change}"
+    return (
+        f"{expression} = ?",
+        answer,
+        make_answer_choices(answer, 1, limit),
+        "mixed",
+        expression,
     )
 
 
