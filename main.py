@@ -27,6 +27,9 @@ from game_storage import get_last_player, load_data, save_data, set_last_player
 from game_backup import AndroidBackupPicker
 from game_music import synthesize_biome_tune
 from game_tasks import (
+    new_activity_challenge,
+    start_activity_challenge,
+    credit_activity_day,
     advance_heat_rune,
     advance_clean_biome_streak,
     advance_mob_regeneration,
@@ -233,6 +236,7 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             "marathon_elapsed_seconds": 0,
             "defeated_mob_worlds": [],
             "adaptive_tasks": {},
+            "activity_challenge": new_activity_challenge(),
         }
     else:
         p = profiles[name]
@@ -354,6 +358,7 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
         if equipped_helmet != "none" and p["helmet_durability"].get(equipped_helmet, 0) <= 0:
             p["helmet"] = "none"
 
+    profiles[name].setdefault("activity_challenge", new_activity_challenge())
     save_data(profiles)
     if remember_player:
         set_last_player(name)
@@ -2206,6 +2211,23 @@ help_login_btn = pygame.Rect(WIDTH // 2 - 220, 500, 210, 42)
 mob_catalog_btn = pygame.Rect(WIDTH // 2 + 10, 500, 210, 42)
 exit_login_btn = pygame.Rect(WIDTH // 2 - 70, 555, 140, 34)
 backup_entry_btn = pygame.Rect(805, 25, 170, 38)
+parent_lock_btn = pygame.Rect(25, 25, 54, 54)
+parent_back_btn = pygame.Rect(35, 25, 150, 44)
+parent_settings_btn = pygame.Rect(340, 270, 320, 60)
+pin_buttons = {
+    str(number): pygame.Rect(380 + ((number - 1) % 3) * 82, 210 + ((number - 1) // 3) * 62, 76, 54)
+    for number in range(1, 10)
+}
+pin_buttons["0"] = pygame.Rect(462, 396, 76, 54)
+pin_buttons["<"] = pygame.Rect(380, 396, 76, 54)
+pin_buttons["OK"] = pygame.Rect(544, 396, 76, 54)
+challenge_prev_player_btn = pygame.Rect(230, 120, 60, 44)
+challenge_next_player_btn = pygame.Rect(710, 120, 60, 44)
+challenge_name_rect = pygame.Rect(230, 215, 540, 50)
+challenge_days_rect = pygame.Rect(390, 310, 220, 50)
+challenge_minus_btn = pygame.Rect(310, 310, 60, 50)
+challenge_plus_btn = pygame.Rect(630, 310, 60, 50)
+challenge_start_btn = pygame.Rect(350, 475, 300, 50)
 backup_back_btn = pygame.Rect(35, 25, 150, 40)
 backup_export_btn = pygame.Rect(235, 280, 250, 55)
 backup_import_btn = pygame.Rect(515, 280, 250, 55)
@@ -2232,6 +2254,20 @@ def get_login_profiles():
         return [preferred_player_name]
     start = login_page * LOGIN_PAGE_SIZE
     return known_profiles[start:start + LOGIN_PAGE_SIZE]
+
+
+def draw_challenge_result(profile, y, color):
+    history = profile.get("game_history", [])
+    result = history[-1].get("activity_challenge") if history else None
+    if not result:
+        return
+    title = ("Челлендж выполнен! " if result["completed"] else "Челлендж: ") + result["name"]
+    detail = f"Зачтено дней: {result['count']} из {result['target_days']} · Осталось: {result['remaining']}"
+    if not result["credited"]:
+        detail += " · Сегодня уже зачтено"
+    for index, text in enumerate((title, detail)):
+        rendered = FONT_SMALL.render(text, True, color)
+        screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, y + index * 23))
 
 
 def finish_marathon_to_menu():
@@ -2331,9 +2367,9 @@ boss_btn_stats = pygame.Rect(220, 475, 270, 48)
 boss_btn_finish = pygame.Rect(510, 475, 270, 48)
 review_btn_continue = pygame.Rect(WIDTH // 2 - 160, 500, 320, 48)
 final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 385, 280, 46)
-stats_prev_btn = pygame.Rect(WIDTH // 2 - 250, 500, 120, 42)
-stats_next_btn = pygame.Rect(WIDTH // 2 + 130, 500, 120, 42)
-stats_restart_btn = pygame.Rect(WIDTH // 2 - 120, 500, 240, 42)
+stats_prev_btn = pygame.Rect(WIDTH // 2 - 250, 490, 120, 42)
+stats_next_btn = pygame.Rect(WIDTH // 2 + 130, 490, 120, 42)
+stats_restart_btn = pygame.Rect(WIDTH // 2 - 120, 490, 240, 42)
 stats_finish_btn = pygame.Rect(725, 35, 125, 38)
 history_back_btn = pygame.Rect(145, 520, 130, 40)
 history_prev_btn = pygame.Rect(WIDTH // 2 - 150, 520, 110, 40)
@@ -2371,6 +2407,13 @@ async def main():
     running = True
     workbench_notice = ""
     backup_notice = ""
+    parent_pin = ""
+    parent_notice = ""
+    challenge_player = ""
+    challenge_name = ""
+    challenge_days = "7"
+    challenge_field = None
+    challenge_settings_profile = {}
 
     while running:
         backup_result = backup_picker.poll()
@@ -2460,6 +2503,12 @@ async def main():
                 selected_for_play = None
                 selected_for_stats = None
                 if event.type == pygame.MOUSEBUTTONDOWN:
+                    if parent_lock_btn.collidepoint(mouse_pos):
+                        parent_pin = ""
+                        parent_notice = ""
+                        pygame.key.stop_text_input()
+                        game_state = "PARENT_PIN"
+                        continue
                     if backup_entry_btn.collidepoint(mouse_pos):
                         backup_return_state = "LOGIN"
                         game_state = "BACKUP"
@@ -2514,6 +2563,103 @@ async def main():
                     history_page = 0
                     history_selected_index = None
                     game_state = "HISTORY"
+            elif game_state == "PARENT_PIN":
+                pin_key = None
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if parent_back_btn.collidepoint(mouse_pos):
+                        parent_pin = ""
+                        game_state = "LOGIN"
+                        continue
+                    pin_key = next((key for key, rect in pin_buttons.items() if rect.collidepoint(mouse_pos)), None)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        parent_pin = ""
+                        game_state = "LOGIN"
+                    elif event.key == pygame.K_BACKSPACE:
+                        pin_key = "<"
+                    elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                        pin_key = "OK"
+                    elif getattr(event, "unicode", "") in "0123456789" and getattr(event, "unicode", ""):
+                        pin_key = event.unicode
+                if pin_key == "<":
+                    parent_pin = parent_pin[:-1]
+                elif pin_key == "OK":
+                    if parent_pin == "2908":
+                        game_state = "PARENT_MENU"
+                        parent_notice = ""
+                    else:
+                        parent_notice = "Неверный PIN-код"
+                    parent_pin = ""
+                elif pin_key:
+                    parent_pin = (parent_pin + pin_key)[:4]
+                    parent_notice = ""
+
+            elif game_state == "PARENT_MENU":
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    game_state = "LOGIN"
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if parent_back_btn.collidepoint(mouse_pos):
+                        game_state = "LOGIN"
+                    elif parent_settings_btn.collidepoint(mouse_pos):
+                        challenge_player = preferred_player_name if preferred_player_name in known_profiles else known_profiles[0]
+                        challenge_settings_profile = get_player(challenge_player, False, False)
+                        challenge = challenge_settings_profile["activity_challenge"]
+                        challenge_name = challenge["name"]
+                        challenge_days = str(challenge["target_days"] or 7)
+                        challenge_field = None
+                        parent_notice = ""
+                        game_state = "CHALLENGE_SETTINGS"
+
+            elif game_state == "CHALLENGE_SETTINGS":
+                challenge = challenge_settings_profile["activity_challenge"]
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    pygame.key.stop_text_input()
+                    game_state = "PARENT_MENU"
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    pygame.key.stop_text_input()
+                    challenge_field = None
+                    if parent_back_btn.collidepoint(mouse_pos):
+                        game_state = "PARENT_MENU"
+                    elif challenge_prev_player_btn.collidepoint(mouse_pos) or challenge_next_player_btn.collidepoint(mouse_pos):
+                        direction = 1 if challenge_next_player_btn.collidepoint(mouse_pos) else -1
+                        challenge_player = known_profiles[(known_profiles.index(challenge_player) + direction) % len(known_profiles)]
+                        challenge_settings_profile = get_player(challenge_player, False, False)
+                        challenge = challenge_settings_profile["activity_challenge"]
+                        challenge_name = challenge["name"]
+                        challenge_days = str(challenge["target_days"] or 7)
+                        parent_notice = ""
+                    elif not challenge["active"]:
+                        if challenge_name_rect.collidepoint(mouse_pos) or challenge_days_rect.collidepoint(mouse_pos):
+                            challenge_field = "name" if challenge_name_rect.collidepoint(mouse_pos) else "days"
+                            pygame.key.start_text_input()
+                            pygame.key.set_text_input_rect(challenge_name_rect if challenge_field == "name" else challenge_days_rect)
+                        elif challenge_minus_btn.collidepoint(mouse_pos) or challenge_plus_btn.collidepoint(mouse_pos):
+                            direction = 1 if challenge_plus_btn.collidepoint(mouse_pos) else -1
+                            challenge_days = str(max(1, min(365, int(challenge_days or 0) + direction)))
+                        elif challenge_start_btn.collidepoint(mouse_pos):
+                            all_data = load_data()
+                            p = all_data[challenge_player]
+                            try:
+                                start_activity_challenge(p, challenge_name, int(challenge_days or 0))
+                            except ValueError as error:
+                                parent_notice = str(error)
+                            else:
+                                save_data(all_data)
+                                challenge_settings_profile = p
+                                if player_name == challenge_player:
+                                    player_data = p
+                                parent_notice = "Челлендж запущен!"
+                elif event.type == pygame.TEXTINPUT and not challenge["active"]:
+                    if challenge_field == "name":
+                        challenge_name = (challenge_name + "".join(c for c in event.text if c.isprintable()))[:32]
+                    elif challenge_field == "days":
+                        challenge_days = (challenge_days + "".join(c for c in event.text if c in "0123456789"))[:3]
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_BACKSPACE and not challenge["active"]:
+                    if challenge_field == "name":
+                        challenge_name = challenge_name[:-1]
+                    elif challenge_field == "days":
+                        challenge_days = challenge_days[:-1]
+
             elif game_state == "BACKUP":
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if backup_back_btn.collidepoint(mouse_pos):
@@ -2859,6 +3005,7 @@ async def main():
                                             "duration_seconds": current_duration,
                                             "previous_duration_seconds": previous_duration,
                                             "speed_bonus": boss_speed_bonus,
+                                            "activity_challenge": credit_activity_day(p, date.today().isoformat()),
                                         })
                                         save_data(all_data)
                                         player_data = p
@@ -3599,6 +3746,71 @@ async def main():
             )
             draw_mc_button(screen, backup_entry_btn, "Копия данных", backup_entry_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
 
+            draw_mc_button(screen, parent_lock_btn, "", parent_lock_btn.collidepoint(mouse_pos))
+            pygame.draw.rect(screen, MC_GOLD, (42, 35, 20, 25), 4)
+            pygame.draw.rect(screen, MC_GOLD, (37, 47, 30, 23))
+            pygame.draw.rect(screen, DARK_TEXT, (50, 54, 5, 10))
+
+        elif game_state in ("PARENT_PIN", "PARENT_MENU", "CHALLENGE_SETTINGS"):
+            screen.fill((60, 85, 115))
+            card = pygame.Rect(190, 75, 620, 500)
+            pygame.draw.rect(screen, MC_GUI_BG, card)
+            pygame.draw.rect(screen, MC_GUI_BLACK, card, 3)
+            draw_mc_button(screen, parent_back_btn, "< Назад", parent_back_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
+            if game_state == "PARENT_PIN":
+                title = FONT_TITLE.render("ВВЕДИТЕ PIN-КОД", True, DARK_TEXT)
+                screen.blit(title, (500 - title.get_width() // 2, 100))
+                masked = FONT_TITLE.render("* " * len(parent_pin), True, DARK_TEXT)
+                screen.blit(masked, (500 - masked.get_width() // 2, 160))
+                for key, rect in pin_buttons.items():
+                    draw_mc_button(screen, rect, key, rect.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                if parent_notice:
+                    rendered = FONT_MED.render(parent_notice, True, RED)
+                    screen.blit(rendered, (500 - rendered.get_width() // 2, 480))
+            elif game_state == "PARENT_MENU":
+                title = FONT_TITLE.render("ДОСТУП ОТКРЫТ", True, DARK_TEXT)
+                screen.blit(title, (500 - title.get_width() // 2, 150))
+                draw_mc_button(screen, parent_settings_btn, "Секретные настройки", parent_settings_btn.collidepoint(mouse_pos), font_pref=FONT_BIG)
+            else:
+                challenge = challenge_settings_profile["activity_challenge"]
+                active = challenge["active"]
+                title = FONT_TITLE.render("НАСТРОЙКИ ЧЕЛЛЕНДЖА", True, DARK_TEXT)
+                screen.blit(title, (500 - title.get_width() // 2, 80))
+                draw_mc_button(screen, challenge_prev_player_btn, "<", challenge_prev_player_btn.collidepoint(mouse_pos))
+                draw_mc_button(screen, challenge_next_player_btn, ">", challenge_next_player_btn.collidepoint(mouse_pos))
+                rendered = FONT_BIG.render(challenge_player, True, (35, 75, 125))
+                screen.blit(rendered, (500 - rendered.get_width() // 2, 130))
+                for rect, label, value, field in (
+                    (challenge_name_rect, "Название (до 32 символов)", challenge_name, "name"),
+                    (challenge_days_rect, "Количество дней: 1–365", challenge_days, "days"),
+                ):
+                    label_surf = FONT_MED.render(label, True, DARK_TEXT)
+                    screen.blit(label_surf, (rect.x, rect.y - 30))
+                    pygame.draw.rect(screen, (215, 220, 215) if active else WHITE, rect)
+                    pygame.draw.rect(screen, (65, 135, 205) if challenge_field == field else MC_GUI_DARK, rect, 3)
+                    font = FONT_MED if field == "name" else FONT_BIG
+                    while font.size(value)[0] > rect.width - 20 and len(value) > 1:
+                        value = value[:-2] + "…"
+                    rendered = font.render(value or "Нажми для ввода", True, DARK_TEXT)
+                    screen.blit(rendered, (rect.x + 10, rect.centery - rendered.get_height() // 2))
+                for rect, label in ((challenge_minus_btn, "−"), (challenge_plus_btn, "+")):
+                    draw_mc_button(screen, rect, label, rect.collidepoint(mouse_pos) and not active, active=not active)
+                lines = (
+                    f"Идёт челлендж: зачтено {challenge['count']} из {challenge['target_days']} дней."
+                    if active else "Челлендж не запущен. Заполни поля и нажми «Пуск».",
+                    "Один завершённый марафон = один день, не чаще раза в дату.",
+                    "Пропуск дня не сбрасывает прогресс.",
+                )
+                for index, line in enumerate(lines):
+                    rendered = FONT_SMALL.render(line, True, DARK_TEXT)
+                    screen.blit(rendered, (500 - rendered.get_width() // 2, 383 + index * 25))
+                draw_mc_button(screen, challenge_start_btn, "Челлендж идёт" if active else "Пуск",
+                               challenge_start_btn.collidepoint(mouse_pos) and not active, active=not active,
+                               custom_bg=(55, 140, 75), font_pref=FONT_BIG)
+                if parent_notice:
+                    rendered = FONT_SMALL.render(parent_notice, True, (35, 75, 125))
+                    screen.blit(rendered, (500 - rendered.get_width() // 2, 540))
+
         elif game_state == "BACKUP":
             screen.fill((60, 100, 125))
             card = pygame.Rect(110, 75, 780, 455)
@@ -3872,6 +4084,7 @@ async def main():
                 screen.blit(w1, (WIDTH//2 - w1.get_width()//2, 180))
                 screen.blit(w2, (WIDTH//2 - w2.get_width()//2, 235))
                 screen.blit(w3, (WIDTH//2 - w3.get_width()//2, 280))
+                draw_challenge_result(player_data, 323, (35, 100, 55))
 
                 draw_mc_button(screen, final_win_restart_btn, "Начать новый марафон", final_win_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
 
@@ -4282,7 +4495,7 @@ async def main():
                                boss_book_btn.collidepoint(mouse_pos) and can_use_book,
                                can_use_book, font_pref=FONT_SMALL)
             else:
-                res_box = pygame.Rect(WIDTH // 2 - 250, 250, 500, 195)
+                res_box = pygame.Rect(120, 250, 760, 215)
                 pygame.draw.rect(screen, (40, 35, 50), res_box, border_radius=8)
                 pygame.draw.rect(screen, MC_GOLD, res_box, 3, border_radius=8)
 
@@ -4307,6 +4520,7 @@ async def main():
                 screen.blit(FONT_MED.render(sub_info, True, WHITE), (WIDTH // 2 - FONT_MED.size(sub_info)[0] // 2, 325))
                 screen.blit(FONT_SMALL.render(speed_text, True, MC_GOLD), (WIDTH // 2 - FONT_SMALL.size(speed_text)[0] // 2, 355))
                 screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 382))
+                draw_challenge_result(player_data, 416, MC_GOLD)
 
                 draw_mc_button(screen, boss_btn_stats, "Статистика", boss_btn_stats.collidepoint(mouse_pos), font_pref=FONT_MED)
                 draw_mc_button(screen, boss_btn_finish, "Завершить", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED,
@@ -4371,6 +4585,7 @@ async def main():
                 screen.blit(perfect_text, (WIDTH // 2 - perfect_text.get_width() // 2, 250))
 
             draw_mc_button(screen, stats_restart_btn, "Новый марафон", stats_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
+            draw_challenge_result(player_data, 538, (35, 100, 55))
 
         elif game_state == "HISTORY":
             screen.fill((35, 40, 52))

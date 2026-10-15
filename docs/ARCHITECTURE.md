@@ -56,6 +56,9 @@ async main(): события → обновление → отрисовка →
 |---|---|---:|
 | `REGISTER` | Создание профиля: имя, аватар и режим | нет |
 | `LOGIN` | Последний игрок или список существующих профилей | нет |
+| `PARENT_PIN` | PIN с экранной цифровой клавиатурой | нет |
+| `PARENT_MENU` | Секретная кнопка настроек после PIN | нет |
+| `CHALLENGE_SETTINGS` | Выбор профиля, название, цель и запуск челленджа | нет |
 | `BACKUP` | Экспорт и восстановление сохранений Android | нет |
 | `HELP` | Детская инструкция | нет |
 | `MOB_CATALOG` | Каталог мобов по биомам | нет |
@@ -182,6 +185,15 @@ Android включено, но зависит от настроек устрой
 | Серия сундука | `clean_biome_streak`, `biome_had_error`, `chest_pending_next_marathon`, `chest_challenge`, `chest_seen_questions` |
 | Состояния встреч | `sage_completed`, `defeated_mob_worlds`, `strength_mob_task`, `frog_mob_task`, `web_seconds_left`, `vampire_bat_active`, `vampire_bat_target_world`, `heat_rune_task`, `heat_rune_seconds_left`, `heat_rune_mob_hp`, `heat_rune_regen_elapsed`, `sharp_sword_task`, `boss_artifact_choice` |
 | Обучение | `adaptive_tasks`, `game_history` |
+| Челлендж | `activity_challenge`: `name`, `target_days`, `count`, `active`, `last_date` |
+
+`game_tasks.start_activity_challenge()` запускает челлендж явно, а
+`credit_activity_day()` вызывается только в транзакции победы над Драконом.
+Снимок результата помещается в `game_history[].activity_challenge` вместе с
+историей прохождения и сохраняется одной записью с датой зачёта. Это позволяет
+обнулить рабочий счётчик при выполнении и сохранить итог на экране победы после
+перезапуска. Сброс марафона не затрагивает челлендж. Дата последнего зачёта
+сохраняется даже при запуске следующего челленджа.
 
 `get_player()` одновременно загружает профиль и выполняет миграцию. Новое поле
 нужно добавлять в создание нового профиля и в ветку существующего профиля.

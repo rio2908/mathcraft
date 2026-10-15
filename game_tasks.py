@@ -366,3 +366,43 @@ def pick_logic_task_with_history(profile_name, seen_questions, difficulty=None):
     choices = list(task["choices"])
     random.shuffle(choices)
     return task["question"], task["answer"], choices, history + [task["question"]]
+
+
+def new_activity_challenge():
+    return {"name": "", "target_days": 0, "count": 0, "active": False, "last_date": None}
+
+
+def start_activity_challenge(profile, name, days):
+    """Start explicitly; keep the last credited date even across challenges."""
+    name = " ".join(name.split())
+    if not name or len(name) > 32 or not 1 <= days <= 365:
+        raise ValueError("Укажите название и число дней от 1 до 365.")
+    old = profile.get("activity_challenge", {})
+    if old.get("active"):
+        raise ValueError("Текущий челлендж ещё не завершён.")
+    profile["activity_challenge"] = {
+        "name": name, "target_days": days, "count": 0, "active": True,
+        "last_date": old.get("last_date"),
+    }
+
+
+def credit_activity_day(profile, today):
+    """Called only on marathon victory; return a durable result-screen snapshot."""
+    challenge = profile.get("activity_challenge", {})
+    if not challenge.get("active"):
+        return None
+    credited = challenge.get("last_date") != today
+    if credited:
+        challenge["count"] += 1
+        challenge["last_date"] = today
+    count = challenge["count"]
+    target = challenge["target_days"]
+    completed = count >= target
+    result = {
+        "name": challenge["name"], "count": count, "target_days": target,
+        "remaining": max(0, target - count), "completed": completed, "credited": credited,
+    }
+    if completed:
+        challenge["active"] = False
+        challenge["count"] = 0
+    return result
