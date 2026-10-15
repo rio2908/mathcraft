@@ -11,6 +11,7 @@ LAST_PLAYER_FILE = "mc_last_player.txt"
 BACKUP_FORMAT = "mathcraft-backup"
 BACKUP_VERSION = 1
 MAX_BACKUP_BYTES = 10 * 1024 * 1024
+MAX_MANUAL_EMERALDS = 9_999_999
 
 
 def load_data():
@@ -70,6 +71,20 @@ def set_last_player(name):
         pass
 
 
+def set_player_emeralds(name, emeralds):
+    """Replace one balance, preserving all other profile data and other players."""
+    if type(emeralds) is not int or not 0 <= emeralds <= MAX_MANUAL_EMERALDS:
+        raise ValueError(f"Укажите целое число от 0 до {MAX_MANUAL_EMERALDS}.")
+    profiles = load_data()
+    if name not in profiles or not isinstance(profiles[name], dict):
+        raise ValueError("Игрок не найден.")
+    profiles[name]["emeralds"] = emeralds
+    save_data(profiles)
+    if load_data() != profiles:
+        raise OSError("Не удалось сохранить баланс. Попробуйте ещё раз.")
+    return profiles[name]
+
+
 def make_backup_bytes():
     """Export every profile and the selected player as a portable JSON file."""
     profiles = load_data()
@@ -81,15 +96,20 @@ def make_backup_bytes():
         "profiles": profiles,
         "last_player": get_last_player(),
     }
-    return json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
+    content = json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
+    if len(content) > MAX_BACKUP_BYTES:
+        raise ValueError("Файл резервной копии слишком большой.")
+    return content
 
 
 def restore_backup_bytes(content):
     """Import missing profiles without overwriting progress already on device."""
+    if not content:
+        raise ValueError("Файл резервной копии пуст (0 байт). Выберите другую копию.")
     if len(content) > MAX_BACKUP_BYTES:
         raise ValueError("Файл резервной копии слишком большой.")
     try:
-        document = json.loads(content.decode("utf-8"))
+        document = json.loads(content.decode("utf-8-sig"))
     except (UnicodeError, ValueError) as error:
         raise ValueError("Не удалось прочитать файл резервной копии.") from error
     if not isinstance(document, dict) or document.get("format") != BACKUP_FORMAT or document.get("version") != BACKUP_VERSION:

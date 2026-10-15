@@ -23,7 +23,7 @@ from game_content import (
     UNICORN,
     WORLDS,
 )
-from game_storage import get_last_player, load_data, save_data, set_last_player
+from game_storage import get_last_player, load_data, save_data, set_last_player, set_player_emeralds
 from game_backup import AndroidBackupPicker
 from game_music import synthesize_biome_tune
 from game_tasks import (
@@ -2214,6 +2214,9 @@ backup_entry_btn = pygame.Rect(805, 25, 170, 38)
 parent_lock_btn = pygame.Rect(25, 25, 54, 54)
 parent_back_btn = pygame.Rect(35, 25, 150, 44)
 parent_settings_btn = pygame.Rect(340, 270, 320, 60)
+parent_emeralds_btn = pygame.Rect(340, 355, 320, 60)
+parent_emeralds_rect = pygame.Rect(300, 250, 400, 56)
+parent_emeralds_apply_btn = pygame.Rect(350, 400, 300, 54)
 pin_buttons = {
     str(number): pygame.Rect(380 + ((number - 1) % 3) * 82, 210 + ((number - 1) // 3) * 62, 76, 54)
     for number in range(1, 10)
@@ -2414,6 +2417,7 @@ async def main():
     challenge_days = "7"
     challenge_field = None
     challenge_settings_profile = {}
+    parent_emeralds = ""
 
     while running:
         backup_result = backup_picker.poll()
@@ -2600,7 +2604,7 @@ async def main():
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if parent_back_btn.collidepoint(mouse_pos):
                         game_state = "LOGIN"
-                    elif parent_settings_btn.collidepoint(mouse_pos):
+                    elif parent_settings_btn.collidepoint(mouse_pos) or parent_emeralds_btn.collidepoint(mouse_pos):
                         challenge_player = preferred_player_name if preferred_player_name in known_profiles else known_profiles[0]
                         challenge_settings_profile = get_player(challenge_player, False, False)
                         challenge = challenge_settings_profile["activity_challenge"]
@@ -2608,7 +2612,49 @@ async def main():
                         challenge_days = str(challenge["target_days"] or 7)
                         challenge_field = None
                         parent_notice = ""
-                        game_state = "CHALLENGE_SETTINGS"
+                        parent_emeralds = str(challenge_settings_profile.get("emeralds", 0))
+                        game_state = "EMERALD_SETTINGS" if parent_emeralds_btn.collidepoint(mouse_pos) else "CHALLENGE_SETTINGS"
+
+            elif game_state == "EMERALD_SETTINGS":
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    pygame.key.stop_text_input()
+                    challenge_field = None
+                    game_state = "PARENT_MENU"
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    pygame.key.stop_text_input()
+                    challenge_field = None
+                    if parent_back_btn.collidepoint(mouse_pos):
+                        game_state = "PARENT_MENU"
+                    elif challenge_prev_player_btn.collidepoint(mouse_pos) or challenge_next_player_btn.collidepoint(mouse_pos):
+                        direction = 1 if challenge_next_player_btn.collidepoint(mouse_pos) else -1
+                        challenge_player = known_profiles[(known_profiles.index(challenge_player) + direction) % len(known_profiles)]
+                        challenge_settings_profile = get_player(challenge_player, False, False)
+                        parent_emeralds = str(challenge_settings_profile.get("emeralds", 0))
+                        parent_notice = ""
+                    elif parent_emeralds_rect.collidepoint(mouse_pos):
+                        challenge_field = "emeralds"
+                        pygame.key.start_text_input()
+                        pygame.key.set_text_input_rect(parent_emeralds_rect)
+                    elif parent_emeralds_apply_btn.collidepoint(mouse_pos):
+                        try:
+                            if not parent_emeralds or any(c not in "0123456789" for c in parent_emeralds):
+                                raise ValueError("Укажите целое число от 0 до 9999999.")
+                            p = set_player_emeralds(challenge_player, int(parent_emeralds))
+                        except (ValueError, OSError) as error:
+                            parent_notice = str(error)
+                        else:
+                            challenge_settings_profile = p
+                            saved_profiles[challenge_player] = p
+                            if player_name == challenge_player:
+                                player_data = p
+                            parent_emeralds = str(p["emeralds"])
+                            parent_notice = f"Баланс применён: {p['emeralds']} изумрудов."
+                elif event.type == pygame.TEXTINPUT and challenge_field == "emeralds":
+                    parent_emeralds = (parent_emeralds + "".join(c for c in event.text if c.isprintable()))[:10]
+                    parent_notice = ""
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_BACKSPACE and challenge_field == "emeralds":
+                    parent_emeralds = parent_emeralds[:-1]
+                    parent_notice = ""
 
             elif game_state == "CHALLENGE_SETTINGS":
                 challenge = challenge_settings_profile["activity_challenge"]
@@ -2673,8 +2719,8 @@ async def main():
                             backup_notice = "Копирование доступно в Android-приложении."
                         else:
                             try:
-                                backup_picker.start(export=True)
-                                backup_notice = "Выберите место для копии вне приложения."
+                                if backup_picker.start(export=True):
+                                    backup_notice = "Выберите место для копии вне приложения."
                             except Exception as error:
                                 backup_notice = f"Не удалось открыть выбор файла: {error}"
                     elif backup_import_btn.collidepoint(mouse_pos):
@@ -2682,8 +2728,8 @@ async def main():
                             backup_notice = "Восстановление доступно в Android-приложении."
                         else:
                             try:
-                                backup_picker.start(export=False)
-                                backup_notice = "Выберите ранее сохранённую копию."
+                                if backup_picker.start(export=False):
+                                    backup_notice = "Выберите ранее сохранённую копию."
                             except Exception as error:
                                 backup_notice = f"Не удалось открыть выбор файла: {error}"
 
@@ -3751,7 +3797,7 @@ async def main():
             pygame.draw.rect(screen, MC_GOLD, (37, 47, 30, 23))
             pygame.draw.rect(screen, DARK_TEXT, (50, 54, 5, 10))
 
-        elif game_state in ("PARENT_PIN", "PARENT_MENU", "CHALLENGE_SETTINGS"):
+        elif game_state in ("PARENT_PIN", "PARENT_MENU", "CHALLENGE_SETTINGS", "EMERALD_SETTINGS"):
             screen.fill((60, 85, 115))
             card = pygame.Rect(190, 75, 620, 500)
             pygame.draw.rect(screen, MC_GUI_BG, card)
@@ -3770,7 +3816,30 @@ async def main():
             elif game_state == "PARENT_MENU":
                 title = FONT_TITLE.render("ДОСТУП ОТКРЫТ", True, DARK_TEXT)
                 screen.blit(title, (500 - title.get_width() // 2, 150))
-                draw_mc_button(screen, parent_settings_btn, "Секретные настройки", parent_settings_btn.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                draw_mc_button(screen, parent_settings_btn, "Настройки челленджа", parent_settings_btn.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                draw_mc_button(screen, parent_emeralds_btn, "Баланс изумрудов", parent_emeralds_btn.collidepoint(mouse_pos), font_pref=FONT_BIG)
+            elif game_state == "EMERALD_SETTINGS":
+                title = FONT_TITLE.render("БАЛАНС ИЗУМРУДОВ", True, DARK_TEXT)
+                screen.blit(title, (500 - title.get_width() // 2, 80))
+                draw_mc_button(screen, challenge_prev_player_btn, "<", challenge_prev_player_btn.collidepoint(mouse_pos))
+                draw_mc_button(screen, challenge_next_player_btn, ">", challenge_next_player_btn.collidepoint(mouse_pos))
+                rendered = FONT_BIG.render(challenge_player, True, (35, 75, 125))
+                screen.blit(rendered, (500 - rendered.get_width() // 2, 130))
+                current_balance = challenge_settings_profile.get("emeralds", 0)
+                label = FONT_MED.render(f"Сейчас у игрока: {current_balance}", True, DARK_TEXT)
+                screen.blit(label, (500 - label.get_width() // 2, 195))
+                pygame.draw.rect(screen, WHITE, parent_emeralds_rect)
+                pygame.draw.rect(screen, (65, 135, 205) if challenge_field == "emeralds" else MC_GUI_DARK, parent_emeralds_rect, 3)
+                value = FONT_BIG.render(parent_emeralds or "Введите число", True, DARK_TEXT)
+                screen.blit(value, (parent_emeralds_rect.x + 15, parent_emeralds_rect.centery - value.get_height() // 2))
+                for index, line in enumerate(("Новое количество: от 0 до 9999999.", "Заменяет баланс, а не прибавляет изумруды.")):
+                    rendered = FONT_MED.render(line, True, DARK_TEXT)
+                    screen.blit(rendered, (500 - rendered.get_width() // 2, 330 + index * 26))
+                draw_mc_button(screen, parent_emeralds_apply_btn, "Применить", parent_emeralds_apply_btn.collidepoint(mouse_pos),
+                               font_pref=FONT_BIG, custom_bg=(55, 140, 75))
+                if parent_notice:
+                    rendered = FONT_SMALL.render(parent_notice, True, (35, 75, 125))
+                    screen.blit(rendered, (500 - rendered.get_width() // 2, 490))
             else:
                 challenge = challenge_settings_profile["activity_challenge"]
                 active = challenge["active"]
@@ -3828,14 +3897,14 @@ async def main():
                 rendered = FONT_MED.render(line, True, DARK_TEXT)
                 screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 165 + index * 27))
             draw_mc_button(screen, backup_export_btn, "Сохранить копию", backup_export_btn.collidepoint(mouse_pos),
-                           font_pref=FONT_MED, custom_bg=(55, 140, 75))
+                           active=backup_picker.pending is None, font_pref=FONT_MED, custom_bg=(55, 140, 75))
             draw_mc_button(screen, backup_import_btn, "Восстановить", backup_import_btn.collidepoint(mouse_pos),
-                           font_pref=FONT_MED, custom_bg=(75, 105, 155))
+                           active=backup_picker.pending is None, font_pref=FONT_MED, custom_bg=(75, 105, 155))
             note = "Существующие игроки не перезаписываются при восстановлении."
             rendered = FONT_SMALL.render(note, True, (70, 80, 90))
             screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 370))
-            if backup_notice:
-                displayed = backup_notice
+            if backup_picker.status or backup_notice:
+                displayed = backup_picker.status or backup_notice
                 while FONT_SMALL.size(displayed)[0] > 735 and len(displayed) > 1:
                     displayed = displayed[:-2] + "…"
                 rendered = FONT_SMALL.render(displayed, True, (45, 75, 115))

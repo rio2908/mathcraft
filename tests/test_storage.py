@@ -102,6 +102,58 @@ class StorageTests(unittest.TestCase):
                 game_storage.restore_backup_bytes(content)
         self.assertEqual(game_storage.load_data()["Ксения"]["emeralds"], 17)
 
+    def test_utf8_bom_backup_is_supported(self):
+        game_storage.save_data({"Настя": {"emeralds": 42}})
+        content = b"\xef\xbb\xbf" + game_storage.make_backup_bytes()
+        self.save_path.unlink()
+        self.assertEqual(game_storage.restore_backup_bytes(content), (1, 0))
+        self.assertEqual(game_storage.load_data()["Настя"]["emeralds"], 42)
+
+    def test_oversized_export_is_rejected_before_creating_unusable_backup(self):
+        game_storage.save_data({"Настя": {"emeralds": 42}})
+        with patch.object(game_storage, "MAX_BACKUP_BYTES", 10):
+            with self.assertRaisesRegex(ValueError, "слишком большой"):
+                game_storage.make_backup_bytes()
+
+    def test_failed_restore_write_is_reported_and_existing_progress_is_preserved(self):
+        game_storage.save_data({"Новый": {"emeralds": 42}})
+        content = game_storage.make_backup_bytes()
+        game_storage.save_data({"Настя": {"emeralds": 90}})
+        before = self.save_path.read_bytes()
+        with patch.object(game_storage.os, "replace", side_effect=OSError("Disk full")):
+            with self.assertRaisesRegex(OSError, "Не удалось сохранить"):
+                game_storage.restore_backup_bytes(content)
+        self.assertEqual(self.save_path.read_bytes(), before)
+
+    def test_manual_emeralds_replace_balance_and_preserve_profiles_and_challenge(self):
+        challenge = {"name": "Осень", "active": True, "count": 3, "target_days": 10}
+        game_storage.save_data({
+            "Настя": {"emeralds": 83, "task_num": 12, "activity_challenge": challenge},
+            "Ксения": {"emeralds": 50},
+        })
+        game_storage.set_last_player("Настя")
+        profile = game_storage.set_player_emeralds("Настя", 400)
+        self.assertEqual(profile["emeralds"], 400)
+        self.assertEqual(profile["task_num"], 12)
+        self.assertEqual(profile["activity_challenge"], challenge)
+        self.assertEqual(game_storage.load_data()["Настя"], profile)
+        self.assertEqual(game_storage.load_data()["Ксения"]["emeralds"], 50)
+        self.assertEqual(game_storage.get_last_player(), "Настя")
+        self.assertEqual(game_storage.set_player_emeralds("Ксения", 0)["emeralds"], 0)
+
+    def test_invalid_manual_emeralds_and_failed_save_do_not_change_progress(self):
+        game_storage.save_data({"Настя": {"emeralds": 83}})
+        before = self.save_path.read_bytes()
+        for value in (-1, 1.5, "5", True, game_storage.MAX_MANUAL_EMERALDS + 1):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                game_storage.set_player_emeralds("Настя", value)
+        with self.assertRaises(ValueError):
+            game_storage.set_player_emeralds("Нет такого игрока", 10)
+        with patch.object(game_storage.os, "replace", side_effect=OSError("Disk full")):
+            with self.assertRaisesRegex(OSError, "Не удалось сохранить баланс"):
+                game_storage.set_player_emeralds("Настя", 400)
+        self.assertEqual(self.save_path.read_bytes(), before)
+
 
 if __name__ == "__main__":
     unittest.main()
