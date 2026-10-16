@@ -5,6 +5,8 @@ import os
 import sys
 import tempfile
 
+from game_reminders import challenge_reminders
+
 
 SAVE_FILE = "mc_math_save.json"
 LAST_PLAYER_FILE = "mc_last_player.txt"
@@ -41,6 +43,7 @@ def save_data(data):
             json.dump(data, save_file, ensure_ascii=False, indent=4)
         os.replace(temporary_path, SAVE_FILE)
         temporary_path = None
+        challenge_reminders.sync(data, SAVE_FILE)
     except Exception:
         pass
     finally:

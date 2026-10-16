@@ -22,9 +22,12 @@ android.release_artifact = apk
 android.ndk = 25b
 android.enable_androidx = True
 android.allow_backup = True
+android.permissions = android.permission.POST_NOTIFICATIONS,android.permission.RECEIVE_BOOT_COMPLETED
+android.add_src = android/src
 
 p4a.bootstrap = sdl2
 p4a.branch = v2024.01.21
+p4a.hook = android/p4a_hook.py
 
 [buildozer]
 log_level = 2

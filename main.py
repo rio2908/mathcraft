@@ -25,6 +25,7 @@ from game_content import (
 )
 from game_storage import get_last_player, load_data, save_data, set_last_player, set_player_emeralds
 from game_backup import AndroidBackupPicker
+from game_reminders import challenge_reminders
 from game_music import synthesize_biome_tune
 from game_tasks import (
     new_activity_challenge,
@@ -1769,7 +1770,7 @@ def format_duration(seconds):
     return f"{minutes:02d}:{secs:02d}"
 
 def persist_marathon_timer():
-    if not player_name or not player_data:
+    if not player_name or not player_data or player_data.get("task_num", 1) > TOTAL_QUESTS:
         return
     elapsed = max(0, int(round(marathon_elapsed_seconds)))
     player_data["marathon_elapsed_seconds"] = elapsed
@@ -1780,7 +1781,7 @@ def persist_marathon_timer():
 
 
 def persist_heat_rune_timer():
-    if not player_name:
+    if not player_name or game_state != "MOB_BATTLE":
         return
     all_data = load_data()
     p = all_data.get(player_name.strip())
@@ -1987,6 +1988,33 @@ def take_battle_hit(profile):
     return "down" if profile["hero_hearts"] == 0 else "hurt"
 
 
+def record_battle_error(profile, expression, wrong, correct, source):
+    """Keep combat mistakes in statistics without adding route-only boss HP."""
+    detail = {
+        "world": current_world_idx + 1, "task": task_num,
+        "expr": expression, "wrong": wrong, "correct": correct,
+        "protected_by_helmet": False, "source": source,
+    }
+    profile["marathon_errors"] = profile.get("marathon_errors", 0) + 1
+    profile.setdefault("marathon_error_details", []).append(detail)
+    ten_errors.append(dict(detail))
+
+
+def marathon_timer_is_active():
+    """Results and paused menus are not part of the time spent solving tasks."""
+    if task_num > TOTAL_QUESTS or game_state not in TIMED_GAME_STATES:
+        return False
+    if game_state == "BOSS_BATTLE":
+        return not boss_won
+    if game_state == "MOB_BATTLE":
+        return mob_hp > 0 and not mob_failed_reset
+    if game_state == "SAGE_CHALLENGE":
+        return not sage_finished
+    if game_state == "CHEST_LOCK":
+        return not (player_data.get("chest_challenge") or {}).get("finished", False)
+    return True
+
+
 def hero_max_hearts(profile):
     return 1 if profile.get("hero_frog", False) else 3
 
@@ -2106,6 +2134,7 @@ def reset_entire_marathon():
     global task_num, step_in_world, current_world_idx, hero_x, hero_y, target_x, target_y, is_moving
     global ten_errors, question_str, correct_ans, choices, current_op, clean_expr, game_state, message, message_color
     global player_data, marathon_elapsed_seconds, timer_save_accumulator
+    global combo_count
 
     task_num = 1
     current_world_idx, step_in_world = get_task_position(task_num)
@@ -2114,6 +2143,7 @@ def reset_entire_marathon():
     target_x, target_y = hero_x, hero_y
     is_moving = False
     ten_errors = []
+    combo_count = 0
     marathon_elapsed_seconds = 0.0
     timer_save_accumulator = 0.0
 
@@ -2215,6 +2245,7 @@ parent_lock_btn = pygame.Rect(25, 25, 54, 54)
 parent_back_btn = pygame.Rect(35, 25, 150, 44)
 parent_settings_btn = pygame.Rect(340, 270, 320, 60)
 parent_emeralds_btn = pygame.Rect(340, 355, 320, 60)
+parent_reminders_btn = pygame.Rect(290, 440, 420, 50)
 parent_emeralds_rect = pygame.Rect(300, 250, 400, 56)
 parent_emeralds_apply_btn = pygame.Rect(350, 400, 300, 54)
 pin_buttons = {
@@ -2419,7 +2450,11 @@ async def main():
     challenge_settings_profile = {}
     parent_emeralds = ""
 
+    challenge_reminders.resume()
     while running:
+        reminder_notice = challenge_reminders.poll()
+        if reminder_notice is not None:
+            parent_notice = reminder_notice
         backup_result = backup_picker.poll()
         if backup_result is not None:
             backup_notice, restored = backup_result
@@ -2443,6 +2478,8 @@ async def main():
         if mob_regen_flash_timer > 0: mob_regen_flash_timer -= 1
 
         for event in pygame.event.get():
+            if event.type in (getattr(pygame, "APP_DIDENTERFOREGROUND", -1), pygame.WINDOWFOCUSGAINED):
+                challenge_reminders.resume()
             if event.type == pygame.MOUSEBUTTONDOWN and hasattr(event, "pos"):
                 mouse_pos = event.pos
                 ensure_audio()
@@ -2604,6 +2641,8 @@ async def main():
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if parent_back_btn.collidepoint(mouse_pos):
                         game_state = "LOGIN"
+                    elif parent_reminders_btn.collidepoint(mouse_pos):
+                        parent_notice = challenge_reminders.request_permission()
                     elif parent_settings_btn.collidepoint(mouse_pos) or parent_emeralds_btn.collidepoint(mouse_pos):
                         challenge_player = preferred_player_name if preferred_player_name in known_profiles else known_profiles[0]
                         challenge_settings_profile = get_player(challenge_player, False, False)
@@ -2695,6 +2734,8 @@ async def main():
                                 if player_name == challenge_player:
                                     player_data = p
                                 parent_notice = "Челлендж запущен!"
+                                if challenge_reminders.available():
+                                    parent_notice += " " + challenge_reminders.request_permission()
                 elif event.type == pygame.TEXTINPUT and not challenge["active"]:
                     if challenge_field == "name":
                         challenge_name = (challenge_name + "".join(c for c in event.text if c.isprintable()))[:32]
@@ -3027,6 +3068,7 @@ async def main():
                                         finish_biome(p, current_world_idx)
                                         history = p.setdefault("game_history", [])
                                         current_duration = max(1, int(round(marathon_elapsed_seconds)))
+                                        marathon_elapsed_seconds = current_duration
                                         previous_duration = history[-1].get("duration_seconds") if history else None
                                         boss_previous_time = previous_duration
                                         boss_speed_bonus = (
@@ -3061,6 +3103,7 @@ async def main():
                                         set_next_boss_task()
                                 else:
                                     play_sound("wrong")
+                                    record_battle_error(p, boss_clean_expr, boss_choices[i], boss_ans, "boss")
                                     hit_result = take_battle_hit(p)
                                     pet_error = register_pet_error(p)
                                     if hit_result == "down":
@@ -3337,6 +3380,7 @@ async def main():
                                         mob_hint_hidden = -1
                                 else:
                                     play_sound("wrong")
+                                    record_battle_error(p, mob_clean_expr, mob_choices[i], mob_ans, "mob")
                                     mob_id = get_route_world(p, current_world_idx)["mob_id"]
                                     ability_active = p.get("frog_mob_task") != task_num
                                     if mob_id == "witch" and ability_active and apply_witch_curse(p):
@@ -3611,7 +3655,7 @@ async def main():
         travel_type, is_upgraded = get_active_vehicle(player_data, cur_w)
         has_vehicle = travel_type != "foot"
 
-        if is_moving:
+        if is_moving and game_state == "GAME":
             move_speed = 0.13 if is_upgraded else 0.09 if has_vehicle else 0.055
             move_progress += move_speed
             if anim_tick % 3 == 0:
@@ -3818,6 +3862,11 @@ async def main():
                 screen.blit(title, (500 - title.get_width() // 2, 150))
                 draw_mc_button(screen, parent_settings_btn, "Настройки челленджа", parent_settings_btn.collidepoint(mouse_pos), font_pref=FONT_BIG)
                 draw_mc_button(screen, parent_emeralds_btn, "Баланс изумрудов", parent_emeralds_btn.collidepoint(mouse_pos), font_pref=FONT_BIG)
+                draw_mc_button(screen, parent_reminders_btn, "Напоминания: 07:00 и 17:00", parent_reminders_btn.collidepoint(mouse_pos), font_pref=FONT_MED)
+                note = FONT_SMALL.render("Только пока идёт челлендж и день ещё не зачтён.", True, DARK_TEXT)
+                screen.blit(note, (500 - note.get_width() // 2, 505))
+                if parent_notice:
+                    draw_centered_wrapped_text(screen, parent_notice, FONT_SMALL, (35, 75, 125), 500, 532, 580)
             elif game_state == "EMERALD_SETTINGS":
                 title = FONT_TITLE.render("БАЛАНС ИЗУМРУДОВ", True, DARK_TEXT)
                 screen.blit(title, (500 - title.get_width() // 2, 80))
@@ -3877,8 +3926,7 @@ async def main():
                                challenge_start_btn.collidepoint(mouse_pos) and not active, active=not active,
                                custom_bg=(55, 140, 75), font_pref=FONT_BIG)
                 if parent_notice:
-                    rendered = FONT_SMALL.render(parent_notice, True, (35, 75, 125))
-                    screen.blit(rendered, (500 - rendered.get_width() // 2, 540))
+                    draw_centered_wrapped_text(screen, parent_notice, FONT_SMALL, (35, 75, 125), 500, 536, 580)
 
         elif game_state == "BACKUP":
             screen.fill((60, 100, 125))
@@ -5150,7 +5198,7 @@ async def main():
                     spawn_dust(720, 165, color=(110, 220, 255))
                 if mob_hp >= mob_max_hp:
                     mob_regen_started = False
-        timer_is_running = game_state in TIMED_GAME_STATES and not (game_state == "BOSS_BATTLE" and boss_won)
+        timer_is_running = marathon_timer_is_active()
         if timer_is_running:
             marathon_elapsed_seconds += frame_seconds
             timer_save_accumulator += frame_seconds

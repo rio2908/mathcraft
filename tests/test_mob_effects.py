@@ -352,6 +352,10 @@ class MobEffectTests(unittest.TestCase):
                         while time.time() < deadline and app.mob_web_seconds_left <= 0:
                             time.sleep(.02)
                         assert app.mob_web_seconds_left > 0
+                        # The runtime flag is set before the atomic JSON write.
+                        # Do not race that write from the test's worker thread.
+                        while time.time() < deadline and load_data()["Тест"]["web_seconds_left"] <= 0:
+                            time.sleep(.02)
                         assert load_data()["Тест"]["web_seconds_left"] > 0
                         hp_before = app.mob_hp
                         elapsed_before = app.marathon_elapsed_seconds

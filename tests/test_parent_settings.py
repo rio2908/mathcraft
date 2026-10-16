@@ -68,6 +68,9 @@ class ParentSettingsUITests(unittest.TestCase):
                             click(app.pin_buttons[digit])
                         click(app.pin_buttons["OK"])
                         state("PARENT_MENU")
+                        click(app.parent_reminders_btn)
+                        time.sleep(0.1)
+                        assert app.game_state == "PARENT_MENU"
                         snapshot("parent-menu")
                         click(app.parent_emeralds_btn)
                         state("EMERALD_SETTINGS")
