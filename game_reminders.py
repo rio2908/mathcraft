@@ -119,6 +119,19 @@ class AndroidChallengeReminders:
             kind, value = self._results.get_nowait()
         except Empty:
             return None
+        # p4a v2024.01.21 keeps every completed permission callback forever.
+        # Release only our own entries, never callbacks belonging to other code.
+        # Do this on the game thread, after the UI callback has returned.
+        try:
+            from android.permissions import _RequestPermissionsManager
+        except ImportError:
+            pass  # Other p4a versions (or desktop test doubles) may not expose it.
+        else:
+            callbacks = getattr(_RequestPermissionsManager, "_callbacks", None)
+            if isinstance(callbacks, dict):
+                for request, callback in tuple(callbacks.items()):
+                    if callback == self._on_permission:
+                        callbacks.pop(request, None)
         self._asking = False
         if kind == "error":
             return "Не удалось запросить разрешение на уведомления."

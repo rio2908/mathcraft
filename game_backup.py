@@ -30,8 +30,14 @@ class AndroidBackupPicker:
         self._launch_on_ui = None
 
     @property
+    def busy(self):
+        return self.pending is not None or (self._worker is not None and self._worker.is_alive())
+
+    @property
     def status(self):
         if self.pending is None:
+            if self.busy:
+                return "Хранилище занято. Можно играть; повторите после перезапуска приложения."
             return ""
         if self._worker is None:
             return "Выберите файл в системном окне Android."
@@ -60,8 +66,9 @@ class AndroidBackupPicker:
             self._events.put((operation, "error", str(error)))
 
     def start(self, export):
-        if self.pending is not None:
+        if self.busy:
             return False
+        self._worker = None
         # Validate the snapshot before Android creates an otherwise empty file.
         payload = make_backup_bytes() if export else None
         activity, _, Intent = self._android()
@@ -104,10 +111,13 @@ class AndroidBackupPicker:
         self.pending = None
         self._payload = None
         self._operation = None
-        self._worker = None
+        # A timeout cannot kill a thread blocked in a document provider. Keep
+        # its handle so retries cannot accumulate more threads and JNI objects.
+        if self._worker is not None and not self._worker.is_alive():
+            self._worker = None
         self._deadline = None
 
-    def _transfer(self, operation, request_code, uri, payload):
+    def _transfer(self, operation, request_code, uri):
         """Only document I/O runs here; local saves are merged by poll()."""
         try:
             _, current_activity, _ = self._android()
@@ -127,6 +137,11 @@ class AndroidBackupPicker:
                     raise
                 with backup_file:
                     if request_code == EXPORT_REQUEST:
+                        # Do not retain a potentially large snapshot in Thread.args
+                        # while openFileDescriptor is blocked. Timeout frees it.
+                        payload = self._payload
+                        if operation is not self._operation:
+                            return
                         if backup_file.write(payload) != len(payload):
                             raise OSError("Копия записана не полностью.")
                         backup_file.flush()
@@ -142,6 +157,8 @@ class AndroidBackupPicker:
 
     def poll(self):
         """Consume callbacks without blocking a frame on a document provider."""
+        if self.pending is None and self._worker is not None and not self._worker.is_alive():
+            self._worker = None
         try:
             while True:
                 try:
@@ -164,7 +181,7 @@ class AndroidBackupPicker:
                         raise ValueError("Файл не выбран.")
                     self._worker = Thread(
                         target=self._transfer,
-                        args=(operation, self.pending, uri, self._payload),
+                        args=(operation, self.pending, uri),
                         name="MathCraft-backup", daemon=True,
                     )
                     self._deadline = monotonic() + TRANSFER_TIMEOUT_SECONDS
@@ -180,7 +197,7 @@ class AndroidBackupPicker:
                     return f"Все {skipped} игроки уже есть. Прогресс не перезаписан.", False
             if self._deadline is not None and monotonic() >= self._deadline:
                 self._clear()
-                return "Файловое хранилище не отвечает. Повторите с файлом в Загрузках.", False
+                return "Файловое хранилище не отвечает. Можно вернуться в игру.", False
         except Exception as error:
             self._clear()
             return f"Ошибка копии: {error}", False

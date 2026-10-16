@@ -1,12 +1,14 @@
 """Exercise the Android bridge using real files and a strict fake Java API."""
 
 import json
+import gc
 import os
 from pathlib import Path
 import tempfile
 from threading import Event, get_ident
 from types import ModuleType, SimpleNamespace
 import unittest
+import weakref
 from unittest.mock import Mock, patch
 
 import game_backup
@@ -333,3 +335,35 @@ class BackupPickerTests(unittest.TestCase):
         self.assertIsNone(self.picker.pending)
         self.assertEqual(self.ui_jobs, [])
         self.assertEqual(self.launches, [])
+
+    def test_timed_out_export_releases_snapshot_and_keeps_only_one_live_worker(self):
+        class Payload(bytearray):
+            pass
+
+        payload = Payload(b"x" * (1024 * 1024))
+        payload_ref = weakref.ref(payload)
+        self.release.clear()
+        worker = None
+        try:
+            with patch.object(game_backup, "make_backup_bytes", return_value=payload):
+                _, request = self.launch(True)
+            del payload
+            with patch.object(game_backup, "monotonic", return_value=100):
+                self.assertIsNone(self.select(request))
+            self.assertTrue(self.entered.wait(1))
+            worker = self.picker._worker
+            with patch.object(game_backup, "monotonic", return_value=131):
+                self.assertIn("не отвечает", self.picker.poll()[0])
+            gc.collect()
+            self.assertTrue(payload_ref() is None, "A blocked provider must not retain the export snapshot")
+            for _ in range(100):
+                self.assertFalse(self.picker.start(False), "Do not pile up stuck I/O threads on retry")
+            self.assertIs(self.picker._worker, worker)
+            self.assertTrue(self.picker.busy)
+        finally:
+            self.release.set()
+            if worker is not None:
+                worker.join(3)
+        self.assertIsNone(self.picker.poll())
+        self.assertFalse(self.picker.busy)
+        self.assertTrue(self.picker.start(False))

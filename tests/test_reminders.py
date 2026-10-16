@@ -147,6 +147,19 @@ class ReminderBridgeTests(unittest.TestCase):
         self.permissions.request_permissions.assert_not_called()
         self.assertEqual(self.ui_jobs, [])
 
+    def test_completed_permission_callbacks_do_not_accumulate_in_p4a_registry(self):
+        # p4a v2024.01.21 retains callbacks after invoking them. Model that
+        # registry rather than letting our Mock hide the SDK's retention.
+        other_callback = lambda permissions, grants: None
+        callbacks = {1: None, 999: other_callback}
+        self.permissions._RequestPermissionsManager = SimpleNamespace(_callbacks=callbacks)
+        for request_id in range(1000, 2000):
+            callbacks[request_id] = self.bridge._on_permission
+            self.bridge._on_permission([game_reminders.POST_NOTIFICATIONS], [False])
+            self.bridge.poll()
+        self.assertEqual(len(callbacks), 2)
+        self.assertIs(callbacks[999], other_callback)
+
 
 class ReminderBuildTests(unittest.TestCase):
     def test_manifest_hook_is_idempotent_and_registers_only_a_private_receiver(self):

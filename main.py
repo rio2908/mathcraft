@@ -2312,6 +2312,8 @@ def finish_marathon_to_menu():
     game_state = "LOGIN"
 
 def layout_login_profile_buttons(profile_names):
+    player_play_buttons.clear()
+    player_stats_buttons.clear()
     for index, profile_name in enumerate(profile_names):
         row_y = 252 + index * 70
         player_play_buttons[profile_name] = pygame.Rect(480, row_y, 150, 44)
@@ -3945,9 +3947,11 @@ async def main():
                 rendered = FONT_MED.render(line, True, DARK_TEXT)
                 screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 165 + index * 27))
             draw_mc_button(screen, backup_export_btn, "Сохранить копию", backup_export_btn.collidepoint(mouse_pos),
-                           active=backup_picker.pending is None, font_pref=FONT_MED, custom_bg=(55, 140, 75))
+                           active=not backup_picker.busy, font_pref=FONT_MED,
+                           custom_bg=None if backup_picker.busy else (55, 140, 75))
             draw_mc_button(screen, backup_import_btn, "Восстановить", backup_import_btn.collidepoint(mouse_pos),
-                           active=backup_picker.pending is None, font_pref=FONT_MED, custom_bg=(75, 105, 155))
+                           active=not backup_picker.busy, font_pref=FONT_MED,
+                           custom_bg=None if backup_picker.busy else (75, 105, 155))
             note = "Существующие игроки не перезаписываются при восстановлении."
             rendered = FONT_SMALL.render(note, True, (70, 80, 90))
             screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, 370))
