@@ -134,7 +134,15 @@ public final class ChallengeReminders {
                 manager.cancel(name, NOTIFICATION_ID);
             }
         }
-        preferences.edit().putStringSet("active_names", activeNames).apply();
+        SharedPreferences.Editor update = preferences.edit();
+        for (String key : preferences.getAll().keySet()) {
+            String player = key.startsWith("sent_7_") ? key.substring(7)
+                : key.startsWith("sent_17_") ? key.substring(8) : null;
+            if (player != null && !profiles.has(player)) {
+                update.remove(key);
+            }
+        }
+        update.putStringSet("active_names", activeNames).apply();
         AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarms == null) {
             return;

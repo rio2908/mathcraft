@@ -154,6 +154,39 @@ class StorageTests(unittest.TestCase):
                 game_storage.set_player_emeralds("Настя", 400)
         self.assertEqual(self.save_path.read_bytes(), before)
 
+    def test_delete_player_preserves_other_profiles_and_updates_last_player(self):
+        kept = {"emeralds": 83, "task_num": 12, "game_history": [{"errors": 2}]}
+        game_storage.save_data({"Настя": kept, "Удаляемый": {
+            "emeralds": 50, "activity_challenge": {"name": "Осень", "active": True},
+        }})
+        game_storage.set_last_player("Удаляемый")
+        with patch.object(game_storage.challenge_reminders, "sync") as sync:
+            self.assertEqual(game_storage.delete_player("Удаляемый"), {"Настя": kept})
+            sync.assert_called_once_with({"Настя": kept}, str(self.save_path))
+        self.assertEqual(game_storage.load_data(), {"Настя": kept})
+        self.assertEqual(game_storage.get_last_player(), "Настя")
+
+    def test_delete_other_player_keeps_selection_and_delete_last_clears_it(self):
+        game_storage.save_data({"Настя": {"emeralds": 83}, "Ксения": {"emeralds": 50}})
+        game_storage.set_last_player("Настя")
+        game_storage.delete_player("Ксения")
+        self.assertEqual(game_storage.get_last_player(), "Настя")
+        self.assertEqual(game_storage.delete_player("Настя"), {})
+        self.assertEqual(game_storage.load_data(), {})
+        self.assertIsNone(game_storage.get_last_player())
+
+    def test_failed_or_unknown_deletion_cannot_change_profiles_or_selection(self):
+        game_storage.save_data({"Настя": {"emeralds": 83}})
+        game_storage.set_last_player("Настя")
+        before = self.save_path.read_bytes()
+        with self.assertRaises(ValueError):
+            game_storage.delete_player("Нет такого игрока")
+        with patch.object(game_storage.os, "replace", side_effect=OSError("Disk full")):
+            with self.assertRaisesRegex(OSError, "Не удалось удалить"):
+                game_storage.delete_player("Настя")
+        self.assertEqual(self.save_path.read_bytes(), before)
+        self.assertEqual(game_storage.get_last_player(), "Настя")
+
 
 if __name__ == "__main__":
     unittest.main()

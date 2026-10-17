@@ -88,6 +88,20 @@ def set_player_emeralds(name, emeralds):
     return profiles[name]
 
 
+def delete_player(name):
+    """Delete exactly the confirmed profile, preserving every other player's data."""
+    profiles = load_data()
+    if not isinstance(profiles, dict) or name not in profiles:
+        raise ValueError("Игрок не найден.")
+    del profiles[name]
+    save_data(profiles)
+    if load_data() != profiles:
+        raise OSError("Не удалось удалить игрока. Попробуйте ещё раз.")
+    if get_last_player() not in profiles:
+        set_last_player(next(iter(profiles), ""))
+    return profiles
+
+
 def make_backup_bytes():
     """Export every profile and the selected player as a portable JSON file."""
     profiles = load_data()

@@ -50,8 +50,10 @@ class MemoryTests(unittest.TestCase):
                 app.layout_login_profile_buttons(names)
                 assert set(app.player_play_buttons) == set(names)
                 assert set(app.player_stats_buttons) == set(names)
+                assert set(app.player_delete_buttons) == set(names)
             app.layout_login_profile_buttons([])
             assert not app.player_play_buttons and not app.player_stats_buttons
+            assert not app.player_delete_buttons
             pygame.quit()
         """)
 

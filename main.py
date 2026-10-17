@@ -23,7 +23,7 @@ from game_content import (
     UNICORN,
     WORLDS,
 )
-from game_storage import get_last_player, load_data, save_data, set_last_player, set_player_emeralds
+from game_storage import delete_player, get_last_player, load_data, save_data, set_last_player, set_player_emeralds
 from game_backup import AndroidBackupPicker
 from game_reminders import challenge_reminders
 from game_music import synthesize_biome_tune
@@ -193,6 +193,26 @@ def request_browser_fullscreen():
             pass
 
 
+def marathon_has_started(profile):
+    """Recognize first-island sessions and progress in saves made before the flag."""
+    task = profile.get("task_num", 1)
+    if task > TOTAL_QUESTS:
+        return False
+    return bool(
+        profile.get("marathon_started", False) or task > 1
+        or profile.get("marathon_elapsed_seconds", 0) > 0
+        or profile.get("marathon_errors", 0) > 0
+        or profile.get("defeated_mob_worlds") or profile.get("sage_completed")
+        or profile.get("chest_challenge")
+    )
+
+
+def player_play_label(profile):
+    if profile.get("task_num", 1) > TOTAL_QUESTS:
+        return "Итоги"
+    return "Продолжить" if marathon_has_started(profile) else "Играть"
+
+
 def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, difficulty=None):
     profiles = load_data()
     name = name.strip()
@@ -204,7 +224,8 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
         profiles[name] = {
             "avatar": chosen_avatar, "difficulty": chosen_difficulty,
             "emeralds": 10, "streak": 1, "last_date": today_str,
-            "task_num": 1, "helmet": "none", "unlocked_helmets": ["none"],
+            "task_num": 1, "marathon_started": False,
+            "helmet": "none", "unlocked_helmets": ["none"],
             "owned_vehicles": [], "upgraded_vehicles": [], "disabled_vehicles": [],
             "unicorn_equipped": False,
             "artifacts": [], "disabled_artifacts": [], "artifact_charges": {},
@@ -360,6 +381,7 @@ def get_player(name, apply_daily_bonus=True, remember_player=True, avatar=None, 
             p["helmet"] = "none"
 
     profiles[name].setdefault("activity_challenge", new_activity_challenge())
+    profiles[name].setdefault("marathon_started", marathon_has_started(profiles[name]))
     save_data(profiles)
     if remember_player:
         set_last_player(name)
@@ -588,6 +610,26 @@ def draw_mc_button(surf, rect, text, hovered=False, active=True, font_pref=None,
     shadow = font.render(text, True, (45, 45, 45))
     surf.blit(shadow, (rect.centerx - txt_surf.get_width() // 2 + 1, rect.centery - txt_surf.get_height() // 2 + 1))
     surf.blit(txt_surf, (rect.centerx - txt_surf.get_width() // 2, rect.centery - txt_surf.get_height() // 2))
+
+
+def draw_player_icon_button(surf, rect, icon, hovered=False):
+    colors = {"add": (60, 135, 90), "delete": (155, 65, 65), "stats": (75, 105, 155)}
+    draw_mc_button(surf, rect, "", hovered, custom_bg=colors[icon])
+    if icon == "stats":
+        cx, cy = rect.center
+        pygame.draw.polygon(surf, (65, 45, 100), [
+            (cx - 19, cy - 13), (cx - 3, cy - 13), (cx, cy - 10),
+            (cx + 3, cy - 13), (cx + 19, cy - 13), (cx + 19, cy + 14),
+            (cx + 3, cy + 14), (cx, cy + 17), (cx - 3, cy + 14), (cx - 19, cy + 14),
+        ])
+        for x in (cx - 16, cx + 2):
+            pygame.draw.rect(surf, (245, 235, 205), (x, cy - 10, 14, 22))
+            for y in (cy - 5, cy + 1, cy + 7):
+                pygame.draw.line(surf, (115, 125, 145), (x + 3, y), (x + 10, y), 2)
+    else:
+        pygame.draw.rect(surf, WHITE, (rect.centerx - 11, rect.centery - 2, 22, 4))
+        if icon == "add":
+            pygame.draw.rect(surf, WHITE, (rect.centerx - 2, rect.centery - 11, 4, 22))
 
 def draw_emerald(surf, cx, cy, r=9):
     pts = [(cx, cy - r), (cx + int(r*0.75), cy - int(r*0.4)), (cx + int(r*0.75), cy + int(r*0.4)),
@@ -2153,6 +2195,7 @@ def reset_entire_marathon():
         completed_marathon = p.get("task_num", 1) > TOTAL_QUESTS
         next_adaptive_tasks = create_adaptive_tasks(p)
         p["task_num"] = 1
+        p["marathon_started"] = True
         p["marathon_errors"] = 0
         p["marathon_error_details"] = []
         p["boss_penalty_errors"] = 0
@@ -2225,6 +2268,7 @@ confirm_exit_no = pygame.Rect(WIDTH // 2 + 20, 310, 110, 42)
 
 player_play_buttons = {}
 player_stats_buttons = {}
+player_delete_buttons = {}
 known_profiles = list(saved_profiles)
 login_page = 0
 LOGIN_PAGE_SIZE = 3
@@ -2234,7 +2278,9 @@ registration_difficulty = "easy"
 registration_error = ""
 registration_name_active = game_state == "REGISTER"
 change_player_btn = pygame.Rect(WIDTH // 2 - 110, 415, 220, 38)
-create_profile_btn = pygame.Rect(WIDTH // 2 - 110, 455, 220, 38)
+create_profile_btn = pygame.Rect(WIDTH // 2 - 27, 453, 54, 44)
+delete_confirm_yes = pygame.Rect(310, 375, 160, 50)
+delete_confirm_no = pygame.Rect(530, 375, 160, 50)
 login_prev_btn = pygame.Rect(205, 213, 75, 30)
 login_next_btn = pygame.Rect(720, 213, 75, 30)
 help_login_btn = pygame.Rect(WIDTH // 2 - 220, 500, 210, 42)
@@ -2304,6 +2350,59 @@ def draw_challenge_result(profile, y, color):
         screen.blit(rendered, (WIDTH // 2 - rendered.get_width() // 2, y + index * 23))
 
 
+def challenge_title_lines(title, font, width):
+    """Wrap even a 32-character name with no spaces without shrinking its font."""
+    lines = []
+    line = ""
+    for word in title.upper().split():
+        if line and font.size(line + " " + word)[0] <= width:
+            line += " " + word
+            continue
+        if line:
+            lines.append(line)
+            line = ""
+        for char in word:
+            if line and font.size(line + char)[0] > width:
+                lines.append(line)
+                line = ""
+            line += char
+    if line:
+        lines.append(line)
+    return lines
+
+
+def draw_challenge_banner(profile, rect):
+    """Prominent victory banner; return text bounds for layout regression tests."""
+    history = profile.get("game_history", [])
+    result = history[-1].get("activity_challenge") if history else None
+    if not result:
+        return []
+    pygame.draw.rect(screen, (50, 40, 70), rect, border_radius=6)
+    pygame.draw.rect(screen, MC_GOLD, rect, 2, border_radius=6)
+    lines = challenge_title_lines(result["name"], FONT_TITLE, rect.width - 28)
+    name_height = len(lines) * FONT_TITLE.get_height() + max(0, len(lines) - 1) * 3
+    name_y = rect.y + 8 + (64 - name_height) // 2
+    bounds = []
+    for index, line in enumerate(lines):
+        rendered = FONT_TITLE.render(line, True, MC_GOLD)
+        target = rendered.get_rect(centerx=rect.centerx, y=name_y + index * (FONT_TITLE.get_height() + 3))
+        screen.blit(rendered, target)
+        bounds.append(target)
+    remaining = FONT_TITLE.render(f"ОСТАЛОСЬ ДНЕЙ: {result['remaining']}", True, WHITE)
+    target = remaining.get_rect(centerx=rect.centerx, y=rect.y + 77)
+    screen.blit(remaining, target)
+    bounds.append(target)
+    summary = ("ЧЕЛЛЕНДЖ ВЫПОЛНЕН! " if result["completed"] else "")
+    summary += f"Зачтено дней: {result['count']} из {result['target_days']}"
+    if not result["credited"]:
+        summary += " · Сегодня уже зачтено"
+    rendered = FONT_SMALL.render(summary, True, MC_EMERALD if result["completed"] else WHITE)
+    target = rendered.get_rect(centerx=rect.centerx, y=rect.y + 114)
+    screen.blit(rendered, target)
+    bounds.append(target)
+    return bounds
+
+
 def finish_marathon_to_menu():
     """Leave a completed marathon without resetting its saved results."""
     global game_state, login_show_all_players, login_page
@@ -2314,10 +2413,29 @@ def finish_marathon_to_menu():
 def layout_login_profile_buttons(profile_names):
     player_play_buttons.clear()
     player_stats_buttons.clear()
+    player_delete_buttons.clear()
     for index, profile_name in enumerate(profile_names):
         row_y = 252 + index * 70
         player_play_buttons[profile_name] = pygame.Rect(480, row_y, 150, 44)
-        player_stats_buttons[profile_name] = pygame.Rect(645, row_y, 150, 44)
+        player_stats_buttons[profile_name] = pygame.Rect(645, row_y, 54, 44)
+        player_delete_buttons[profile_name] = pygame.Rect(710, row_y, 54, 44)
+
+
+def prepare_login_screen(refresh=False):
+    """Build this frame's page before any hit testing or drawing uses its Rects."""
+    global saved_profiles, known_profiles, preferred_player_name, login_show_all_players, login_page
+    if refresh:
+        saved_profiles = load_data()
+        if not isinstance(saved_profiles, dict):
+            saved_profiles = {}
+        known_profiles = list(saved_profiles)
+        if preferred_player_name not in known_profiles:
+            preferred_player_name = None
+            login_show_all_players = True
+        login_page = max(0, min(login_page, max(0, (len(known_profiles) - 1) // LOGIN_PAGE_SIZE)))
+    names = get_login_profiles()
+    layout_login_profile_buttons(names)
+    return names
 
 
 def enter_player(name):
@@ -2332,6 +2450,11 @@ def enter_player(name):
     login_show_all_players = False
     request_browser_fullscreen()
     player_data = get_player(name)
+    if player_data.get("task_num", 1) <= TOTAL_QUESTS and not player_data.get("marathon_started", False):
+        player_data["marathon_started"] = True
+        all_data = load_data()
+        all_data[name.strip()] = player_data
+        save_data(all_data)
     if player_data.get("hero_hearts", 3) <= 0:
         all_data = load_data()
         p = all_data[name.strip()]
@@ -2399,10 +2522,10 @@ def submit_registration():
     enter_player(new_name)
 
 mob_btn_continue = pygame.Rect(WIDTH // 2 - 145, 475, 290, 48)
-boss_btn_stats = pygame.Rect(220, 475, 270, 48)
-boss_btn_finish = pygame.Rect(510, 475, 270, 48)
+boss_btn_stats = pygame.Rect(220, 526, 270, 44)
+boss_btn_finish = pygame.Rect(510, 526, 270, 44)
 review_btn_continue = pygame.Rect(WIDTH // 2 - 160, 500, 320, 48)
-final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 385, 280, 46)
+final_win_restart_btn = pygame.Rect(WIDTH // 2 - 140, 475, 280, 46)
 stats_prev_btn = pygame.Rect(WIDTH // 2 - 250, 490, 120, 42)
 stats_next_btn = pygame.Rect(WIDTH // 2 + 130, 490, 120, 42)
 stats_restart_btn = pygame.Rect(WIDTH // 2 - 120, 490, 240, 42)
@@ -2451,6 +2574,9 @@ async def main():
     challenge_field = None
     challenge_settings_profile = {}
     parent_emeralds = ""
+    login_refresh_needed = True
+    pending_delete_name = None
+    delete_notice = ""
 
     challenge_reminders.resume()
     while running:
@@ -2471,8 +2597,8 @@ async def main():
         anim_tick += 1
         mouse_pos = pygame.mouse.get_pos()
         login_profiles = get_login_profiles()
-        if game_state == "LOGIN":
-            layout_login_profile_buttons(login_profiles)
+        if game_state != "LOGIN":
+            login_refresh_needed = True
 
         if sword_swing_timer > 0: sword_swing_timer -= 1
         if mob_flash_timer > 0: mob_flash_timer -= 1
@@ -2480,6 +2606,8 @@ async def main():
         if mob_regen_flash_timer > 0: mob_regen_flash_timer -= 1
 
         for event in pygame.event.get():
+            if game_state != "LOGIN":
+                login_refresh_needed = True
             if event.type in (getattr(pygame, "APP_DIDENTERFOREGROUND", -1), pygame.WINDOWFOCUSGAINED):
                 challenge_reminders.resume()
             if event.type == pygame.MOUSEBUTTONDOWN and hasattr(event, "pos"):
@@ -2543,6 +2671,8 @@ async def main():
                         game_state = "LOGIN"
 
             elif game_state == "LOGIN":
+                login_profiles = prepare_login_screen(refresh=login_refresh_needed)
+                login_refresh_needed = False
                 selected_for_play = None
                 selected_for_stats = None
                 if event.type == pygame.MOUSEBUTTONDOWN:
@@ -2593,6 +2723,11 @@ async def main():
                             selected_for_play = profile_name
                         elif player_stats_buttons[profile_name].collidepoint(mouse_pos):
                             selected_for_stats = profile_name
+                        elif player_delete_buttons[profile_name].collidepoint(mouse_pos):
+                            pending_delete_name = profile_name
+                            delete_notice = ""
+                            game_state = "CONFIRM_DELETE"
+                            break
 
                 if selected_for_play:
                     enter_player(selected_for_play)
@@ -2606,6 +2741,55 @@ async def main():
                     history_page = 0
                     history_selected_index = None
                     game_state = "HISTORY"
+            elif game_state == "CONFIRM_DELETE":
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    pending_delete_name = None
+                    game_state = "LOGIN"
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if delete_confirm_no.collidepoint(mouse_pos):
+                        pending_delete_name = None
+                        game_state = "LOGIN"
+                    elif delete_confirm_yes.collidepoint(mouse_pos):
+                        if backup_picker.busy:
+                            delete_notice = "Сначала завершите копирование данных или перезапустите игру."
+                            continue
+                        try:
+                            remaining_profiles = delete_player(pending_delete_name)
+                        except (ValueError, OSError) as error:
+                            delete_notice = str(error)
+                        else:
+                            if player_name == pending_delete_name:
+                                player_name = ""
+                                player_data = {}
+                                task_num = 1
+                                current_world_idx, step_in_world = get_task_position(task_num)
+                                marathon_elapsed_seconds = 0.0
+                                timer_save_accumulator = 0.0
+                                combo_count = 0
+                                ten_errors = []
+                                is_moving = False
+                                particles.clear()
+                                floating_texts.clear()
+                            saved_profiles = remaining_profiles
+                            known_profiles = list(remaining_profiles)
+                            last_player_name = get_last_player()
+                            preferred_player_name = last_player_name if last_player_name in remaining_profiles else None
+                            login_show_all_players = True
+                            login_refresh_needed = True
+                            layout_login_profile_buttons([])
+                            pending_delete_name = None
+                            if known_profiles:
+                                game_state = "LOGIN"
+                            else:
+                                registration_name = ""
+                                registration_avatar = "girl"
+                                registration_difficulty = "easy"
+                                registration_error = ""
+                                registration_name_active = True
+                                pygame.key.start_text_input()
+                                pygame.key.set_text_input_rect(register_name_rect)
+                                game_state = "REGISTER"
+
             elif game_state == "PARENT_PIN":
                 pin_key = None
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -3083,6 +3267,7 @@ async def main():
                                         p["marathon_elapsed_seconds"] = current_duration
                                         task_num = TOTAL_QUESTS + 1
                                         p["task_num"] = task_num
+                                        p["marathon_started"] = False
                                         history.append({
                                             "completed_at": datetime.now().isoformat(timespec="minutes"),
                                             "errors": p.get("marathon_errors", 0),
@@ -3712,6 +3897,10 @@ async def main():
 
         sync_biome_music(current_world_idx, game_state)
 
+        if game_state == "LOGIN":
+            login_profiles = prepare_login_screen(refresh=login_refresh_needed)
+            login_refresh_needed = False
+
         # Отрисовка
         if game_state == "REGISTER":
             screen.fill((95, 150, 205))
@@ -3772,7 +3961,7 @@ async def main():
 
             draw_emerald(screen, WIDTH // 2, 115, r=16)
             t1 = FONT_TITLE.render("Математика в Майнкрафте", True, DARK_TEXT)
-            login_hint = "Продолжить игру" if not login_show_all_players else "Выбери игрока"
+            login_hint = "Твой игрок" if not login_show_all_players else "Выбери игрока"
             t2 = FONT_MED.render(login_hint, True, (70, 80, 100))
             screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, 145))
             screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, 190))
@@ -3794,17 +3983,17 @@ async def main():
                 draw_mc_button(
                     screen,
                     player_play_buttons[profile_name],
-                    "Продолжить" if not login_show_all_players else "Играть",
+                    player_play_label(profile),
                     player_play_buttons[profile_name].collidepoint(mouse_pos),
                     custom_bg=(60, 140, 70)
                 )
-                draw_mc_button(
-                    screen,
-                    player_stats_buttons[profile_name],
-                    "Статистика",
-                    player_stats_buttons[profile_name].collidepoint(mouse_pos),
-                    custom_bg=(75, 105, 155)
-                )
+                draw_player_icon_button(screen, player_stats_buttons[profile_name], "stats",
+                                        player_stats_buttons[profile_name].collidepoint(mouse_pos))
+                draw_player_icon_button(screen, player_delete_buttons[profile_name], "delete",
+                                        player_delete_buttons[profile_name].collidepoint(mouse_pos))
+
+            legend = FONT_TINY.render("+ новый игрок  ·  книжка: статистика  ·  − удалить", True, (70, 80, 100))
+            screen.blit(legend, (WIDTH // 2 - legend.get_width() // 2, 220))
 
             if not login_show_all_players:
                 draw_mc_button(
@@ -3818,8 +4007,7 @@ async def main():
                 if (login_page + 1) * LOGIN_PAGE_SIZE < len(known_profiles):
                     draw_mc_button(screen, login_next_btn, ">", login_next_btn.collidepoint(mouse_pos), font_pref=FONT_SMALL)
 
-            draw_mc_button(screen, create_profile_btn, "Создать игрока", create_profile_btn.collidepoint(mouse_pos),
-                           font_pref=FONT_MED, custom_bg=(60, 135, 90))
+            draw_player_icon_button(screen, create_profile_btn, "add", create_profile_btn.collidepoint(mouse_pos))
 
             draw_mc_button(
                 screen, help_login_btn, "Как играть?",
@@ -3842,6 +4030,33 @@ async def main():
             pygame.draw.rect(screen, MC_GOLD, (42, 35, 20, 25), 4)
             pygame.draw.rect(screen, MC_GOLD, (37, 47, 30, 23))
             pygame.draw.rect(screen, DARK_TEXT, (50, 54, 5, 10))
+
+        elif game_state == "CONFIRM_DELETE":
+            screen.fill((65, 75, 95))
+            card = pygame.Rect(160, 135, 680, 350)
+            pygame.draw.rect(screen, MC_GUI_BG, card)
+            pygame.draw.rect(screen, RED, card, 3)
+            title = FONT_TITLE.render("Удалить игрока?", True, RED)
+            screen.blit(title, (500 - title.get_width() // 2, 170))
+            name = str(pending_delete_name)
+            while FONT_TITLE.size(name)[0] > 600 and len(name) > 1:
+                name = name[:-2] + "…"
+            rendered = FONT_TITLE.render(name, True, DARK_TEXT)
+            screen.blit(rendered, (500 - rendered.get_width() // 2, 225))
+            for index, line in enumerate((
+                "Прогресс, покупки, история и челлендж будут удалены.",
+                "Отменить это действие после подтверждения нельзя.",
+                "При необходимости сначала сохраните копию данных.",
+            )):
+                font = FONT_SMALL if index == 2 else FONT_MED
+                rendered = font.render(line, True, DARK_TEXT)
+                screen.blit(rendered, (500 - rendered.get_width() // 2, 275 + index * 27))
+            draw_mc_button(screen, delete_confirm_yes, "Удалить", delete_confirm_yes.collidepoint(mouse_pos),
+                           font_pref=FONT_BIG, custom_bg=(155, 55, 55))
+            draw_mc_button(screen, delete_confirm_no, "Отмена", delete_confirm_no.collidepoint(mouse_pos),
+                           font_pref=FONT_BIG, custom_bg=(65, 135, 75))
+            if delete_notice:
+                draw_centered_wrapped_text(screen, delete_notice, FONT_SMALL, RED, 500, 441, 610)
 
         elif game_state in ("PARENT_PIN", "PARENT_MENU", "CHALLENGE_SETTINGS", "EMERALD_SETTINGS"):
             screen.fill((60, 85, 115))
@@ -4196,7 +4411,7 @@ async def main():
 
                 draw_readable_badge(screen, WIDTH // 2, 318, message, border_col=msg_b_col, text_col=WHITE, font=FONT_MED)
             else:
-                win_box = pygame.Rect(WIDTH//2 - 330, 150, 660, 290)
+                win_box = pygame.Rect(120, 150, 760, 390)
                 pygame.draw.rect(screen, MC_GUI_BG, win_box)
                 pygame.draw.rect(screen, MC_GOLD, win_box, 4)
                 w1 = FONT_TITLE.render("МАРАФОН 50 ПРОЙДЕН! ДРАКОН СВЕРГНУТ!", True, GREEN)
@@ -4205,7 +4420,7 @@ async def main():
                 screen.blit(w1, (WIDTH//2 - w1.get_width()//2, 180))
                 screen.blit(w2, (WIDTH//2 - w2.get_width()//2, 235))
                 screen.blit(w3, (WIDTH//2 - w3.get_width()//2, 280))
-                draw_challenge_result(player_data, 323, (35, 100, 55))
+                draw_challenge_banner(player_data, pygame.Rect(160, 315, 680, 136))
 
                 draw_mc_button(screen, final_win_restart_btn, "Начать новый марафон", final_win_restart_btn.collidepoint(mouse_pos), font_pref=FONT_MED, custom_bg=(60, 140, 70))
 
@@ -4616,12 +4831,12 @@ async def main():
                                boss_book_btn.collidepoint(mouse_pos) and can_use_book,
                                can_use_book, font_pref=FONT_SMALL)
             else:
-                res_box = pygame.Rect(120, 250, 760, 215)
+                res_box = pygame.Rect(120, 250, 760, 270)
                 pygame.draw.rect(screen, (40, 35, 50), res_box, border_radius=8)
                 pygame.draw.rect(screen, MC_GOLD, res_box, 3, border_radius=8)
 
                 r_title = FONT_TITLE.render("ДРАКОН КРАЯ ПОБЕЖДЁН!", True, GREEN)
-                screen.blit(r_title, (WIDTH // 2 - r_title.get_width() // 2, 280))
+                screen.blit(r_title, (WIDTH // 2 - r_title.get_width() // 2, 265))
 
                 sub_info = f"Ты решил все {boss_max_hp} сложнейших примеров подряд!"
                 final_duration = player_data.get("marathon_elapsed_seconds", marathon_elapsed_seconds)
@@ -4638,10 +4853,10 @@ async def main():
                         f"прошлый результат: {format_duration(boss_previous_time)}"
                     )
                 sub_reward = f"Награда за победу: +{60 if boss_speed_bonus else 50} ИЗУМРУДОВ!"
-                screen.blit(FONT_MED.render(sub_info, True, WHITE), (WIDTH // 2 - FONT_MED.size(sub_info)[0] // 2, 325))
-                screen.blit(FONT_SMALL.render(speed_text, True, MC_GOLD), (WIDTH // 2 - FONT_SMALL.size(speed_text)[0] // 2, 355))
-                screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 382))
-                draw_challenge_result(player_data, 416, MC_GOLD)
+                screen.blit(FONT_SMALL.render(sub_info, True, WHITE), (WIDTH // 2 - FONT_SMALL.size(sub_info)[0] // 2, 302))
+                screen.blit(FONT_SMALL.render(speed_text, True, MC_GOLD), (WIDTH // 2 - FONT_SMALL.size(speed_text)[0] // 2, 326))
+                screen.blit(FONT_BIG.render(sub_reward, True, MC_EMERALD), (WIDTH // 2 - FONT_BIG.size(sub_reward)[0] // 2, 349))
+                draw_challenge_banner(player_data, pygame.Rect(140, 376, 720, 136))
 
                 draw_mc_button(screen, boss_btn_stats, "Статистика", boss_btn_stats.collidepoint(mouse_pos), font_pref=FONT_MED)
                 draw_mc_button(screen, boss_btn_finish, "Завершить", boss_btn_finish.collidepoint(mouse_pos), font_pref=FONT_MED,
